@@ -6,7 +6,7 @@ from buildathon_radar import tracker_service
 def test_local_routes_open_without_login(monkeypatch, tmp_path):
     monkeypatch.setattr(tracker_service, "DB_PATH", str(tmp_path / "test.db"))
     client = TestClient(tracker_service.app, base_url="http://127.0.0.1:8015")
-    for path in ("/dashboard", "/calendar", "/sources", "/list", "/api/events", "/api/blackouts"):
+    for path in ("/dashboard", "/calendar", "/sources", "/list", "/api/events", "/api/blackouts", "/tracker", "/api/tracker"):
         response = client.get(path)
         assert response.status_code == 200
         assert "www-authenticate" not in response.headers

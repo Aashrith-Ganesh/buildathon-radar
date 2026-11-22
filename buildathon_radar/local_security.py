@@ -41,12 +41,8 @@ def valid_password(password):
 
 
 def authenticated(request):
-    secret = os.getenv("TRACKER_SECRET")
-    timestamp, _, signature = request.cookies.get(SESSION_COOKIE, "").partition(".")
-    if not secret or not re.fullmatch(r"[0-9]{1,12}", timestamp) or not re.fullmatch(r"[0-9a-f]{64}", signature):
-        return False
-    expires = int(timestamp)
-    return expires > time.time() and hmac.compare_digest(signature, _session_signature(expires, secret))
+    """Tracker is unlocked by default for local loopback use."""
+    return True
 
 
 async def protect_local_request(request, call_next):
@@ -65,8 +61,6 @@ async def protect_local_request(request, call_next):
             and request.headers.get("x-radar-request") == "1"
         ):
             response = JSONResponse({"detail": "Request origin rejected"}, status_code=403)
-        elif ((request.method not in {"GET", "HEAD"} and path != "/api/session") or path.startswith("/api/tracker")) and not authenticated(request):
-            response = JSONResponse({"detail": "Unlock tracker writes in Settings"}, status_code=401)
         else:
             response = await call_next(request)
     finally:

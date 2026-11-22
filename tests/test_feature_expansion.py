@@ -71,19 +71,16 @@ def test_tracker_unlock_and_cross_origin(saved_event, monkeypatch):
     monkeypatch.setenv("TRACKER_SECRET", "fixture-secret")
     client = TestClient(tracker_service.app, base_url=ORIGIN)
     headers = {"X-Radar-Request": "1"}
-    assert client.get("/api/tracker").status_code == 401
-    assert client.put("/api/tracker/retained-robotics", headers=headers, json={"status": "won"}).status_code == 401
-    bad = client.post("/api/session", headers=headers, json={"password": "wrong"})
-    assert bad.status_code == 401
-    unlocked = client.post("/api/session", headers=headers, json={"password": "fixture-secret"})
-    assert "HttpOnly" in unlocked.headers["set-cookie"]
-    assert "fixture-secret" not in unlocked.headers["set-cookie"]
+    # Tracker is unlocked by default for local loopback access
     assert client.get("/api/tracker").status_code == 200
+    tracker_page = client.get("/tracker")
+    assert tracker_page.status_code == 200
+    assert "Unlock in Settings" not in tracker_page.text
+    assert client.put("/api/tracker/retained-robotics", headers=headers, json={"status": "won"}).status_code == 200
+    # Cross-origin mutations are rejected
     assert client.put("/api/tracker/retained-robotics", headers={**headers, "Origin": "https://example.test"},
                       json={"status": "won"}).status_code == 403
     assert client.get("/settings").status_code == 200
-    assert client.delete("/api/session", headers=headers).status_code == 200
-    assert client.get("/api/tracker").status_code == 401
 
 
 @pytest.mark.parametrize(("raw", "amount", "currency"), [

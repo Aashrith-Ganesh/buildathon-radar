@@ -2557,7 +2557,7 @@ document.addEventListener('DOMContentLoaded', () => {{
 </html>"""
 
 
-def _event_detail_page(row, canonical, tracker_entry=None, show_notes=False):
+def _event_detail_page(row, canonical, tracker_entry=None, show_notes=True):
     title = _esc(row["title"])
     eid = _esc(row["event_id"])
     url = _external_url(row["url"])
@@ -3046,8 +3046,6 @@ def tracker_page(request: Request, status: str = Query("", max_length=30), locat
                 raise HTTPException(422, "Invalid tracker filter date")
     if after and before and after > before:
         raise HTTPException(422, "The start of the date range must precede its end")
-    if not authenticated(request):
-        return _shared_page("Tracker", "tracker", '<h1>Personal tracker</h1><p><a href="/settings">Unlock in Settings</a> to view your tracker and notes.</p>')
     conn = _get_conn()
     try:
         rows = personal_tracker.entries(conn)
@@ -3214,12 +3212,12 @@ def event_detail(request: Request, event_id: str):
 def _event_response(request, row):
     conn = _get_conn()
     try:
-        entry = personal_tracker.get_entry(conn, row["event_id"]) if authenticated(request) else None
+        entry = personal_tracker.get_entry(conn, row["event_id"])
     finally:
         conn.close()
     canonical = str(request.base_url).rstrip("/") + "/h/" + row["slug"]
     return HTMLResponse(_event_detail_page(row, canonical=canonical, tracker_entry=entry,
-                                          show_notes=authenticated(request)))
+                                          show_notes=True))
 
 
 @app.get("/h/{slug}")
