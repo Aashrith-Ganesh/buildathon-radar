@@ -5,6 +5,14 @@
   "target_city": "Bengaluru",
   "target_state": "Karnataka",
   "target_country": "India",
+  "user_preferences": {
+    "only_in_person": true,
+    "target_city_only": true,
+    "required_location": "Bengaluru",
+    "exclude_online": true,
+    "exclude_outside_target_city": true,
+    "notes": "User preference set 2026-11-22: strictly in-person events located in Bengaluru"
+  },
   "location_priorities": [
     {
       "tier": "Bengaluru, Karnataka",

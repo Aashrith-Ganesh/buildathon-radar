@@ -274,6 +274,11 @@ def _dashboard_page(events, current_filter=None):
     applied_count = sum(1 for e in events if _val(e, "state") == "applied")
     eligible_count = sum(1 for e in events if _val(e, "eligibility") == "ELIGIBLE")
     unverified_count = sum(1 for e in events if _val(e, "eligibility") == "UNKNOWN")
+    bengaluru_count = sum(
+        1 for e in events
+        if str(_val(e, "mode")).lower() in ("in-person", "hybrid", "offline")
+        and any(p in str(_val(e, "location")).lower() or p in str(_val(e, "summary")).lower() or p in str(_val(e, "title")).lower() for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr"])
+    )
 
     cards_html = f"""
     <section class="metrics" role="region" aria-label="Summary metrics">
@@ -638,6 +643,7 @@ window.addEventListener('keydown', function(e) {{
   <div class="controls">
     <nav class="tabs" aria-label="Filter views">
       <a href="/dashboard" class="{'active' if not current_filter else ''}">All Active ({total})</a>
+      <a href="/dashboard?filter=bengaluru" class="{'active' if current_filter == 'bengaluru' else ''}">📍 Bengaluru In-Person</a>
       <a href="/dashboard?filter=free_weekend" class="{'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend ({free_weekend_count})</a>
       <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">🔥 High Priority ({high_count})</a>
       <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">⚠️ Needs Verification ({unverified_count})</a>
@@ -808,7 +814,13 @@ def health():
 def dashboard(filter: Optional[str] = None):
     conn = _get_conn()
     try:
-        if filter == "free_weekend":
+        if filter == "bengaluru":
+            events = [
+                e for e in tracker_store.get_all_events(conn)
+                if str(e["mode"] if "mode" in e.keys() else "").lower() in ("in-person", "hybrid", "offline")
+                and any(p in str(e["location"] if "location" in e.keys() else "").lower() or p in str(e["summary"] if "summary" in e.keys() else "").lower() or p in str(e["title"] if "title" in e.keys() else "").lower() for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr"])
+            ]
+        elif filter == "free_weekend":
             events = [e for e in tracker_store.get_all_events(conn) if "Free & Weekend" in str(e["why"] if "why" in e.keys() else "")]
         elif filter == "high":
             events = tracker_store.get_events_by_filter(conn, priority="HIGH PRIORITY")
