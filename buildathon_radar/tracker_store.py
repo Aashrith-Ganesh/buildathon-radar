@@ -321,13 +321,25 @@ def get_applied_open(conn, today_str):
     ).fetchall()
 
 
-def get_all_events(conn):
+def get_all_events(conn, min_date=None):
+    if min_date:
+        return conn.execute(
+            """
+            SELECT * FROM events
+            WHERE COALESCE(event_end, event_start, '9999-12-31') > ?
+            ORDER BY score DESC, updated_at DESC
+            """,
+            (min_date,),
+        ).fetchall()
     return conn.execute("SELECT * FROM events ORDER BY score DESC, updated_at DESC").fetchall()
 
 
-def get_events_by_filter(conn, priority=None, state=None, eligibility=None, search=None, limit=100):
+def get_events_by_filter(conn, priority=None, state=None, eligibility=None, search=None, limit=100, min_date=None):
     query = "SELECT * FROM events WHERE 1=1"
     params = []
+    if min_date:
+        query += " AND COALESCE(event_end, event_start, '9999-12-31') > ?"
+        params.append(min_date)
     if priority:
         query += " AND priority = ?"
         params.append(priority)
@@ -338,17 +350,18 @@ def get_events_by_filter(conn, priority=None, state=None, eligibility=None, sear
         query += " AND eligibility = ?"
         params.append(eligibility)
     if search:
-        query += " AND (title LIKE ? OR host LIKE ? OR summary LIKE ?)"
+        query += " AND (title LIKE ? OR host LIKE ? OR summary LIKE ? OR why LIKE ?)"
         s = f"%{search}%"
-        params.extend([s, s, s])
+        params.extend([s, s, s, s])
 
     query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC LIMIT ?"
     params.append(limit)
     return conn.execute(query, params).fetchall()
 
 
-def get_upcoming_deadlines(conn, limit=10):
+def get_upcoming_deadlines(conn, limit=10, min_date=None):
     today = _datetime.now(IST).strftime("%Y-%m-%d")
+    effective_min = max(today, min_date) if min_date else today
     return conn.execute(
         """
         SELECT * FROM events
@@ -357,7 +370,7 @@ def get_upcoming_deadlines(conn, limit=10):
         ORDER BY COALESCE(registration_deadline, event_start) ASC
         LIMIT ?
         """,
-        (today, today, limit),
+        (effective_min, effective_min, limit),
     ).fetchall()
 
 

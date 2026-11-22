@@ -260,22 +260,29 @@ h2 .count {{ color:#8a9a9a; font-weight:normal; }}
 
 
 def _dashboard_page(events, current_filter=None):
+    def _val(row, k, default=""):
+        try:
+            v = row[k]
+            return default if v is None else v
+        except Exception:
+            return default
+
     total = len(events)
-    high_count = sum(1 for e in events if e["priority"] == "HIGH PRIORITY")
-    med_count = sum(1 for e in events if e["priority"] == "MEDIUM PRIORITY")
-    tracked_count = sum(1 for e in events if e["state"] == "tracked")
-    applied_count = sum(1 for e in events if e["state"] == "applied")
-    eligible_count = sum(1 for e in events if e["eligibility"] == "ELIGIBLE")
-    unverified_count = sum(1 for e in events if e["eligibility"] == "UNKNOWN")
+    high_count = sum(1 for e in events if "HIGH" in str(_val(e, "priority")))
+    free_weekend_count = sum(1 for e in events if "Free & Weekend" in str(_val(e, "why")))
+    tracked_count = sum(1 for e in events if _val(e, "state") == "tracked")
+    applied_count = sum(1 for e in events if _val(e, "state") == "applied")
+    eligible_count = sum(1 for e in events if _val(e, "eligibility") == "ELIGIBLE")
+    unverified_count = sum(1 for e in events if _val(e, "eligibility") == "UNKNOWN")
 
     cards_html = f"""
     <div class="metrics">
-      <div class="metric-card"><div class="num">{total}</div><div class="lbl">Discovered</div></div>
-      <div class="metric-card highlight"><div class="num">{high_count}</div><div class="lbl">High Priority</div></div>
+      <div class="metric-card"><div class="num">{total}</div><div class="lbl">Active Opportunities</div></div>
+      <div class="metric-card highlight-indigo"><div class="num">{free_weekend_count}</div><div class="lbl">Free & Weekend</div></div>
+      <div class="metric-card highlight-teal"><div class="num">{high_count}</div><div class="lbl">High Priority</div></div>
       <div class="metric-card"><div class="num">{unverified_count}</div><div class="lbl">Needs Verification</div></div>
-      <div class="metric-card"><div class="num">{eligible_count}</div><div class="lbl">Student Eligible</div></div>
-      <div class="metric-card"><div class="num">{tracked_count}</div><div class="lbl">Shortlisted</div></div>
-      <div class="metric-card"><div class="num">{applied_count}</div><div class="lbl">Applied</div></div>
+      <div class="metric-card highlight-emerald"><div class="num">{tracked_count}</div><div class="lbl">Shortlisted</div></div>
+      <div class="metric-card highlight-blue"><div class="num">{applied_count}</div><div class="lbl">Applied</div></div>
     </div>
     """
 
@@ -288,125 +295,301 @@ def _dashboard_page(events, current_filter=None):
         mode = _esc(e["mode"] or "unknown")
         start = _esc(_format_date(e["event_start"]) or "TBD")
         deadline = _esc(_format_date(e["registration_deadline"]) or "Open")
-        score = _esc(e["score"])
+        score = int(e["score"]) if e["score"] is not None else 0
         priority = _esc(e["priority"])
         eligibility = _esc(e["eligibility"])
         why = _esc(e["why"] or "")
         state = _esc(e["state"])
         url = _esc(e["url"])
 
-        p_class = "p-high" if "HIGH" in priority else ("p-med" if "MEDIUM" in priority else "p-low")
+        # Cost & Timing Badge
+        sched_badge = ""
+        if "Free & Weekend" in why:
+            sched_badge = '<span class="sched-pill sched-fw">Free & Weekend</span>'
+        elif "Paid & Weekend" in why:
+            sched_badge = '<span class="sched-pill sched-pw">Paid & Weekend</span>'
+        elif "Free & Weekday" in why:
+            sched_badge = '<span class="sched-pill sched-fwd">Free & Weekday</span>'
+        elif "Paid & Weekday" in why:
+            sched_badge = '<span class="sched-pill sched-pwd">Paid & Weekday</span>'
+        elif "Unavailable" in why or "Blackout" in why:
+            sched_badge = '<span class="sched-pill sched-conflict">Blackout Conflict</span>'
+
+        # Priority styling
+        if "CONFLICT" in priority or "UNAVAILABLE" in priority:
+            p_class = "p-conflict"
+        elif "HIGH" in priority:
+            p_class = "p-high"
+        elif "MEDIUM" in priority:
+            p_class = "p-med"
+        else:
+            p_class = "p-low"
+
+        # Score styling
+        if score >= 90:
+            score_class = "score-top"
+        elif score >= 70:
+            score_class = "score-high"
+        elif score >= 50:
+            score_class = "score-mid"
+        else:
+            score_class = "score-low"
+
         s_class = "s-tracked" if state == "tracked" else ("s-applied" if state == "applied" else "s-seen")
 
         track_token = tracker_store.sign_action("track", e["event_id"])
         applied_token = tracker_store.sign_action("applied", e["event_id"])
         reject_token = tracker_store.sign_action("reject", e["event_id"])
 
+        mode_badge = f'<span class="mode-pill mode-{mode}">{mode.title()}</span>'
+
         rows_html += f"""
         <tr class="event-item {s_class}">
-          <td><span class="badge {p_class}">{priority}</span></td>
-          <td class="score-cell"><strong>{score}</strong></td>
           <td>
-            <a class="item-title" href="{url}" target="_blank">{title}</a>
-            <div class="item-meta">Host: {host} &middot; {loc} ({mode}) &middot; Starts: {start}</div>
-            <div class="item-why">{why}</div>
+            <div class="priority-wrap">
+              <span class="badge {p_class}">{priority}</span>
+              {sched_badge}
+            </div>
           </td>
-          <td><span class="elig-tag">{eligibility}</span></td>
-          <td>{deadline}</td>
-          <td><span class="state-tag state-{state}">{state}</span></td>
+          <td>
+            <div class="score-circle {score_class}">{score}</div>
+          </td>
+          <td>
+            <div class="title-row">
+              <a class="item-title" href="{url}" target="_blank" rel="noopener">{title}</a>
+              {mode_badge}
+            </div>
+            <div class="item-meta">
+              <span class="meta-host">🏢 {host}</span> &middot; 
+              <span class="meta-loc">📍 {loc}</span> &middot; 
+              <span class="meta-date">📅 Starts: {start}</span>
+            </div>
+            {f'<div class="item-why">{why}</div>' if why else ''}
+          </td>
+          <td>
+            <span class="elig-pill elig-{eligibility.lower()}">
+              {'✓ Class 11/12' if eligibility == 'ELIGIBLE' else ('? Verify' if eligibility == 'UNKNOWN' else '✕ Ineligible')}
+            </span>
+          </td>
+          <td>
+            <div class="deadline-wrap">
+              <span class="deadline-val">{deadline}</span>
+            </div>
+          </td>
+          <td>
+            <span class="state-pill state-{state}">{state.title()}</span>
+          </td>
           <td class="action-cell">
-            <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist">&#128204; Track</a>
-            <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark Applied">&#127919; Applied</a>
-            <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Reject">&#10005; Reject</a>
-            <a class="btn btn-detail" href="/event/{eid}" title="Details">Details</a>
+            <div class="btn-group">
+              <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist event">📌 Track</a>
+              <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark applied">🎯 Applied</a>
+              <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Dismiss event">✕ Reject</a>
+              <a class="btn btn-detail" href="/event/{eid}" title="Full details">Details</a>
+            </div>
           </td>
         </tr>
         """
 
     return f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Buildathon Radar - Student Opportunity Dashboard</title>
 <style>
-body {{ margin:0; padding:0; background:#f6f4ef; font-family:{FONT_STACK}; color:#2e4243; }}
-header {{ background:{TEAL_DARK}; color:#fff; padding:20px 32px; display:flex; justify-content:space-between; align-items:center; }}
-header h1 {{ margin:0; font-size:20px; font-weight:700; }}
-header .tagline {{ font-size:12px; color:#a2cfcb; margin-top:4px; }}
-.container {{ max-width:1200px; margin:24px auto; padding:0 20px; }}
-.metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:24px; }}
-.metric-card {{ background:#fff; border-radius:8px; padding:16px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.05); }}
-.metric-card.highlight {{ border-top:3px solid {ACCENT}; }}
-.metric-card .num {{ font-size:26px; font-weight:bold; color:{TEAL_DARK}; }}
-.metric-card .lbl {{ font-size:12px; text-transform:uppercase; color:#6b7b7b; margin-top:4px; letter-spacing:0.5px; }}
-.controls {{ background:#fff; border-radius:8px; padding:16px 20px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }}
-.tabs a {{ display:inline-block; padding:6px 14px; margin-right:8px; border-radius:4px; font-size:13px; font-weight:bold; text-decoration:none; color:#2e4243; background:#f0eeea; }}
-.tabs a.active, .tabs a:hover {{ background:{ACCENT}; color:#fff; }}
-table {{ width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,0.05); }}
-th {{ background:#f2f0ec; padding:12px 14px; text-align:left; font-size:12px; text-transform:uppercase; color:#6b7b7b; border-bottom:1px solid #e2ece9; }}
-td {{ padding:14px; border-bottom:1px solid #f0eeea; font-size:13px; vertical-align:top; }}
-.score-cell {{ font-size:15px; text-align:center; color:{TEAL_DARK}; }}
-.badge {{ display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold; }}
-.p-high {{ background:#e6f4f1; color:#0d9488; }}
-.p-med {{ background:#fff4e5; color:#d97706; }}
-.p-low {{ background:#f1f5f9; color:#64748b; }}
-.item-title {{ font-size:15px; font-weight:bold; color:{TEAL_DARK}; text-decoration:none; }}
-.item-title:hover {{ text-decoration:underline; }}
-.item-meta {{ font-size:12px; color:#6b7b7b; margin-top:3px; }}
-.item-why {{ font-size:12px; color:#0f4c4c; font-style:italic; margin-top:6px; background:#f7faf9; padding:4px 8px; border-radius:4px; }}
-.elig-tag {{ font-size:11px; font-weight:600; padding:2px 6px; border-radius:3px; background:#f0f7f6; color:#0d9488; }}
-.state-tag {{ font-size:11px; text-transform:uppercase; font-weight:600; padding:2px 6px; border-radius:3px; }}
+:root {{
+  --bg-canvas: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border-subtle: #e2e8f0;
+  --border-light: #f1f5f9;
+  --teal-dark: #082f35;
+  --teal-primary: #0d9488;
+  --teal-light: #f0fdfa;
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}}
+* {{ box-sizing: border-box; }}
+body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:var(--font-stack); color:var(--text-main); -webkit-font-smoothing:antialiased; }}
+header {{ background:var(--teal-dark); color:#fff; padding:18px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #115e59; }}
+.brand {{ display:flex; align-items:center; gap:12px; }}
+.brand-title {{ font-size:19px; font-weight:700; letter-spacing:-0.3px; margin:0; }}
+.brand-badge {{ font-size:11px; background:#115e59; color:#a7f3d0; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }}
+.brand-badge::before {{ content:""; width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block; }}
+.tagline {{ font-size:12px; color:#99f6e4; margin-top:3px; }}
+.header-links a {{ color:#ccfbf1; text-decoration:none; font-size:13px; font-weight:500; margin-left:18px; transition:color 0.15s; }}
+.header-links a:hover {{ color:#fff; }}
+.container {{ max-width:1280px; margin:24px auto; padding:0 20px; }}
+
+/* Metrics Grid */
+.metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }}
+.metric-card {{ background:var(--bg-card); border-radius:8px; padding:16px 18px; text-align:left; border:1px solid var(--border-subtle); box-shadow:0 1px 2px rgba(0,0,0,0.03); }}
+.metric-card .num {{ font-size:28px; font-weight:800; color:var(--text-main); line-height:1.1; letter-spacing:-0.5px; }}
+.metric-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-top:6px; letter-spacing:0.5px; font-weight:600; }}
+.highlight-indigo {{ border-left:4px solid #6366f1; }}
+.highlight-indigo .num {{ color:#4338ca; }}
+.highlight-teal {{ border-left:4px solid var(--teal-primary); }}
+.highlight-teal .num {{ color:#0f766e; }}
+.highlight-emerald {{ border-left:4px solid #10b981; }}
+.highlight-blue {{ border-left:4px solid #3b82f6; }}
+
+/* Controls Bar */
+.controls {{ background:var(--bg-card); border-radius:8px; padding:12px 18px; margin-bottom:16px; border:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }}
+.tabs {{ display:flex; flex-wrap:wrap; gap:6px; }}
+.tabs a {{ display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600; text-decoration:none; color:var(--text-muted); background:var(--border-light); transition:all 0.15s; }}
+.tabs a:hover {{ background:#e2e8f0; color:var(--text-main); }}
+.tabs a.active {{ background:var(--teal-primary); color:#ffffff; }}
+
+/* Live Search Input */
+.search-box {{ display:inline-flex; align-items:center; background:var(--border-light); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 12px; min-width:280px; gap:8px; }}
+.search-box input {{ border:none; background:transparent; font-size:13px; outline:none; width:100%; font-family:inherit; color:var(--text-main); }}
+.search-count {{ font-size:11px; font-weight:600; color:var(--teal-primary); white-space:nowrap; }}
+
+/* Table */
+.table-wrap {{ background:var(--bg-card); border-radius:8px; border:1px solid var(--border-subtle); overflow-x:auto; box-shadow:0 1px 3px rgba(0,0,0,0.03); }}
+table {{ width:100%; border-collapse:collapse; text-align:left; }}
+th {{ background:#f8fafc; padding:12px 16px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; border-bottom:1px solid var(--border-subtle); }}
+td {{ padding:14px 16px; border-bottom:1px solid var(--border-light); font-size:13px; vertical-align:top; }}
+tr:hover td {{ background:#fbfcfd; }}
+
+/* Score pill */
+.score-circle {{ width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; }}
+.score-top {{ background:#dcfce7; color:#15803d; border:2px solid #86efac; }}
+.score-high {{ background:#ccfbf1; color:#0f766e; border:2px solid #5eead4; }}
+.score-mid {{ background:#fef3c7; color:#b45309; border:2px solid #fde68a; }}
+.score-low {{ background:#f1f5f9; color:#475569; border:2px solid #cbd5e1; }}
+
+/* Priority and Schedule Badges */
+.priority-wrap {{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; }}
+.badge {{ display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }}
+.p-high {{ background:#ecfdf5; color:#065f46; }}
+.p-med {{ background:#fffbeb; color:#92400e; }}
+.p-low {{ background:#f1f5f9; color:#475569; }}
+.p-conflict {{ background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }}
+
+.sched-pill {{ display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }}
+.sched-fw {{ background:#e0e7ff; color:#3730a3; }}
+.sched-pw {{ background:#f3e8ff; color:#6b21a8; }}
+.sched-fwd {{ background:#e0f2fe; color:#0369a1; }}
+.sched-pwd {{ background:#f4f4f5; color:#52525b; }}
+.sched-conflict {{ background:#fee2e2; color:#b91c1c; }}
+
+/* Event Content */
+.title-row {{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }}
+.item-title {{ font-size:15px; font-weight:700; color:var(--text-main); text-decoration:none; line-height:1.3; }}
+.item-title:hover {{ color:var(--teal-primary); text-decoration:underline; }}
+.mode-pill {{ font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:3px; background:#f1f5f9; color:#475569; }}
+.mode-in-person {{ background:#dbeafe; color:#1e40af; }}
+.mode-online {{ background:#ede9fe; color:#5b21b6; }}
+.item-meta {{ font-size:12px; color:var(--text-muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; }}
+.item-why {{ font-size:12px; color:#134e4a; margin-top:6px; background:#f0fdfa; padding:6px 10px; border-left:3px solid var(--teal-primary); border-radius:0 4px 4px 0; font-style:italic; line-height:1.4; }}
+
+/* Eligibility & Status */
+.elig-pill {{ display:inline-block; font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; }}
+.elig-eligible {{ background:#dcfce7; color:#166534; }}
+.elig-unknown {{ background:#fef3c7; color:#92400e; }}
+.elig-ineligible {{ background:#fee2e2; color:#991b1b; }}
+
+.state-pill {{ font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 7px; border-radius:4px; }}
 .state-seen {{ background:#f1f5f9; color:#64748b; }}
-.state-tracked {{ background:#ecfdf5; color:#059669; font-weight:bold; }}
-.state-applied {{ background:#eff6ff; color:#2563eb; font-weight:bold; }}
-.action-cell {{ white-space:nowrap; text-align:right; }}
-.btn {{ display:inline-block; padding:5px 9px; border-radius:4px; font-size:12px; font-weight:bold; text-decoration:none; margin-left:4px; }}
-.btn-track {{ background:{ACCENT}; color:#fff; }}
-.btn-applied {{ background:#2563eb; color:#fff; }}
-.btn-reject {{ background:#dc2626; color:#fff; }}
-.btn-detail {{ background:#f0eeea; color:#2e4243; }}
+.state-tracked {{ background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }}
+.state-applied {{ background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; }}
+.state-rejected {{ background:#fef2f2; color:#dc2626; }}
+
+/* Actions */
+.btn-group {{ display:flex; gap:4px; align-items:center; justify-content:flex-end; }}
+.btn {{ display:inline-flex; align-items:center; justify-content:center; padding:5px 9px; border-radius:5px; font-size:12px; font-weight:600; text-decoration:none; transition:all 0.15s; border:1px solid transparent; }}
+.btn-track {{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }}
+.btn-track:hover {{ background:#059669; color:#fff; }}
+.btn-applied {{ background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }}
+.btn-applied:hover {{ background:#2563eb; color:#fff; }}
+.btn-reject {{ background:#fef2f2; color:#991b1b; border-color:#fecaca; }}
+.btn-reject:hover {{ background:#dc2626; color:#fff; }}
+.btn-detail {{ background:#f8fafc; color:#475569; border-color:var(--border-subtle); }}
+.btn-detail:hover {{ background:#e2e8f0; color:var(--text-main); }}
+
+@media (max-width: 768px) {{
+  header {{ padding:14px 18px; }}
+  .container {{ padding:0 12px; }}
+  .search-box {{ min-width:100%; }}
+  .controls {{ flex-direction:column; align-items:stretch; }}
+}}
 </style>
+<script>
+function filterTable() {{
+  const query = document.getElementById('radarSearch').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('tbody tr.event-item');
+  let matchCount = 0;
+  rows.forEach(r => {{
+    const text = r.innerText.toLowerCase();
+    if (!query || text.includes(query)) {{
+      r.style.display = '';
+      matchCount++;
+    }} else {{
+      r.style.display = 'none';
+    }}
+  }});
+  const countEl = document.getElementById('searchCount');
+  if (query) {{
+    countEl.textContent = matchCount + ' matching';
+  }} else {{
+    countEl.textContent = '';
+  }}
+}}
+</script>
 </head>
 <body>
 <header>
-  <div>
-    <h1>🛰️ Buildathon Radar Dashboard</h1>
-    <div class="tagline">Indian High-School Student Edition (Class 11/12) &middot; Bengaluru &middot; Rule-Based AI Layer</div>
+  <div class="brand">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <h1 class="brand-title">🛰️ Buildathon Radar</h1>
+        <span class="brand-badge">Live Radar</span>
+      </div>
+      <div class="tagline">Indian High-School Student Edition (Class 11/12) &middot; Bengaluru &middot; Free & Weekend Prioritized</div>
+    </div>
   </div>
-  <div>
-    <a href="/list" style="color:#fff; text-decoration:none; font-size:13px; margin-right:16px;">View Read-Only List</a>
-    <a href="/api/events" target="_blank" style="color:#a2cfcb; text-decoration:none; font-size:13px;">JSON API</a>
+  <div class="header-links">
+    <a href="/list">Read-Only List</a>
+    <a href="/api/events" target="_blank">JSON API</a>
   </div>
 </header>
 <div class="container">
   {cards_html}
   <div class="controls">
     <div class="tabs">
-      <a href="/dashboard" class="{'active' if not current_filter else ''}">All Opportunities ({total})</a>
+      <a href="/dashboard" class="{'active' if not current_filter else ''}">All Active ({total})</a>
+      <a href="/dashboard?filter=free_weekend" class="{'active' if current_filter == 'free_weekend' else ''}">Free &amp; Weekend ({free_weekend_count})</a>
       <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">High Priority ({high_count})</a>
       <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">Needs Verification ({unverified_count})</a>
       <a href="/dashboard?filter=tracked" class="{'active' if current_filter == 'tracked' else ''}">Shortlisted ({tracked_count})</a>
       <a href="/dashboard?filter=applied" class="{'active' if current_filter == 'applied' else ''}">Applied ({applied_count})</a>
-      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">Upcoming Deadlines</a>
+      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">Deadlines</a>
+    </div>
+    <div class="search-box">
+      <span>🔍</span>
+      <input type="search" id="radarSearch" placeholder="Filter by title, AI theme, host, city..." aria-label="Search hackathons" oninput="filterTable()">
+      <span id="searchCount" class="search-count"></span>
     </div>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th width="120">Priority</th>
-        <th width="40">Score</th>
-        <th>Event & Reason</th>
-        <th width="90">Eligibility</th>
-        <th width="100">Deadline</th>
-        <th width="70">State</th>
-        <th width="180">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:30px;">No events match the selected criteria. Run discovery to populate.</td></tr>'}
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th width="150">Priority &amp; Timing</th>
+          <th width="50">Score</th>
+          <th>Event &amp; Recommendation Rationale</th>
+          <th width="110">Eligibility</th>
+          <th width="110">Deadline</th>
+          <th width="80">State</th>
+          <th width="220" style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:40px; color:#64748b;">No active opportunities match the selected criteria.</td></tr>'}
+      </tbody>
+    </table>
+  </div>
 </div>
 </body>
 </html>"""
@@ -537,7 +720,9 @@ def health():
 def dashboard(filter: Optional[str] = None):
     conn = _get_conn()
     try:
-        if filter == "high":
+        if filter == "free_weekend":
+            events = [e for e in tracker_store.get_all_events(conn) if "Free & Weekend" in str(e["why"] if "why" in e.keys() else "")]
+        elif filter == "high":
             events = tracker_store.get_events_by_filter(conn, priority="HIGH PRIORITY")
         elif filter == "unverified":
             events = tracker_store.get_events_by_filter(conn, eligibility="UNKNOWN")
