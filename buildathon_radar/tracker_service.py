@@ -276,14 +276,32 @@ def _dashboard_page(events, current_filter=None):
     unverified_count = sum(1 for e in events if _val(e, "eligibility") == "UNKNOWN")
 
     cards_html = f"""
-    <div class="metrics">
-      <div class="metric-card"><div class="num">{total}</div><div class="lbl">Active Opportunities</div></div>
-      <div class="metric-card highlight-indigo"><div class="num">{free_weekend_count}</div><div class="lbl">Free & Weekend</div></div>
-      <div class="metric-card highlight-teal"><div class="num">{high_count}</div><div class="lbl">High Priority</div></div>
-      <div class="metric-card"><div class="num">{unverified_count}</div><div class="lbl">Needs Verification</div></div>
-      <div class="metric-card highlight-emerald"><div class="num">{tracked_count}</div><div class="lbl">Shortlisted</div></div>
-      <div class="metric-card highlight-blue"><div class="num">{applied_count}</div><div class="lbl">Applied</div></div>
-    </div>
+    <section class="metrics" role="region" aria-label="Summary metrics">
+      <a href="/dashboard" class="metric-card" title="View all active opportunities">
+        <div class="num">{total}</div>
+        <div class="lbl">Active Opportunities</div>
+      </a>
+      <a href="/dashboard?filter=free_weekend" class="metric-card highlight-indigo" title="View free weekend opportunities">
+        <div class="num">{free_weekend_count}</div>
+        <div class="lbl">⚡ Free & Weekend</div>
+      </a>
+      <a href="/dashboard?filter=high" class="metric-card highlight-teal" title="View high priority opportunities">
+        <div class="num">{high_count}</div>
+        <div class="lbl">🔥 High Priority</div>
+      </a>
+      <a href="/dashboard?filter=unverified" class="metric-card" title="View opportunities needing verification">
+        <div class="num">{unverified_count}</div>
+        <div class="lbl">⚠️ Needs Verification</div>
+      </a>
+      <a href="/dashboard?filter=tracked" class="metric-card highlight-emerald" title="View shortlisted opportunities">
+        <div class="num">{tracked_count}</div>
+        <div class="lbl">📌 Shortlisted</div>
+      </a>
+      <a href="/dashboard?filter=applied" class="metric-card highlight-blue" title="View applied opportunities">
+        <div class="num">{applied_count}</div>
+        <div class="lbl">🎯 Applied</div>
+      </a>
+    </section>
     """
 
     rows_html = ""
@@ -305,25 +323,29 @@ def _dashboard_page(events, current_filter=None):
         # Cost & Timing Badge
         sched_badge = ""
         if "Free & Weekend" in why:
-            sched_badge = '<span class="sched-pill sched-fw">Free & Weekend</span>'
+            sched_badge = '<span class="sched-pill sched-fw" title="Free admission & Weekend timing">⚡ Free &amp; Weekend</span>'
         elif "Paid & Weekend" in why:
-            sched_badge = '<span class="sched-pill sched-pw">Paid & Weekend</span>'
+            sched_badge = '<span class="sched-pill sched-pw" title="Paid admission & Weekend timing">Paid &amp; Weekend</span>'
         elif "Free & Weekday" in why:
-            sched_badge = '<span class="sched-pill sched-fwd">Free & Weekday</span>'
+            sched_badge = '<span class="sched-pill sched-fwd" title="Free admission & Weekday timing">Free &amp; Weekday</span>'
         elif "Paid & Weekday" in why:
-            sched_badge = '<span class="sched-pill sched-pwd">Paid & Weekday</span>'
+            sched_badge = '<span class="sched-pill sched-pwd" title="Paid admission & Weekday timing">Paid &amp; Weekday</span>'
         elif "Unavailable" in why or "Blackout" in why:
-            sched_badge = '<span class="sched-pill sched-conflict">Blackout Conflict</span>'
+            sched_badge = '<span class="sched-pill sched-conflict" title="Conflicts with student blackout dates">⚠️ Blackout Conflict</span>'
 
         # Priority styling
         if "CONFLICT" in priority or "UNAVAILABLE" in priority:
             p_class = "p-conflict"
+            p_icon = "⚠️ "
         elif "HIGH" in priority:
             p_class = "p-high"
+            p_icon = "🔥 "
         elif "MEDIUM" in priority:
             p_class = "p-med"
+            p_icon = "● "
         else:
             p_class = "p-low"
+            p_icon = "○ "
 
         # Score styling
         if score >= 90:
@@ -347,12 +369,12 @@ def _dashboard_page(events, current_filter=None):
         <tr class="event-item {s_class}">
           <td>
             <div class="priority-wrap">
-              <span class="badge {p_class}">{priority}</span>
+              <span class="badge {p_class}">{p_icon}{priority}</span>
               {sched_badge}
             </div>
           </td>
           <td>
-            <div class="score-circle {score_class}">{score}</div>
+            <div class="score-circle {score_class}" aria-label="Score: {score} out of 100">{score}</div>
           </td>
           <td>
             <div class="title-row">
@@ -380,11 +402,11 @@ def _dashboard_page(events, current_filter=None):
             <span class="state-pill state-{state}">{state.title()}</span>
           </td>
           <td class="action-cell">
-            <div class="btn-group">
-              <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist event">📌 Track</a>
-              <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark applied">🎯 Applied</a>
-              <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Dismiss event">✕ Reject</a>
-              <a class="btn btn-detail" href="/event/{eid}" title="Full details">Details</a>
+            <div class="btn-group" role="group" aria-label="Event actions">
+              <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist event" aria-label="Track {title}">📌 Track</a>
+              <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark applied" aria-label="Mark applied for {title}">🎯 Applied</a>
+              <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Dismiss event" aria-label="Dismiss {title}">✕ Dismiss</a>
+              <a class="btn btn-detail" href="/event/{eid}" title="Full details" aria-label="View details for {title}">Details &rarr;</a>
             </div>
           </td>
         </tr>
@@ -401,30 +423,41 @@ def _dashboard_page(events, current_filter=None):
   --bg-canvas: #f8fafc;
   --bg-card: #ffffff;
   --text-main: #0f172a;
-  --text-muted: #64748b;
+  --text-muted: #475569;
   --border-subtle: #e2e8f0;
   --border-light: #f1f5f9;
-  --teal-dark: #082f35;
+  --teal-dark: #042f2e;
   --teal-primary: #0d9488;
+  --teal-focus: #14b8a6;
   --teal-light: #f0fdfa;
   --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:var(--font-stack); color:var(--text-main); -webkit-font-smoothing:antialiased; }}
+
+/* Accessibility: Skip to Content */
+.skip-link {{ position:absolute; top:-40px; left:16px; background:var(--teal-primary); color:#ffffff; padding:8px 16px; border-radius:4px; font-weight:700; text-decoration:none; z-index:1000; transition:top 0.2s; }}
+.skip-link:focus {{ top:16px; }}
+
+/* Accessible Focus Ring */
+:focus-visible {{ outline: 2px solid var(--teal-primary); outline-offset: 2px; }}
+
 header {{ background:var(--teal-dark); color:#fff; padding:18px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #115e59; }}
 .brand {{ display:flex; align-items:center; gap:12px; }}
 .brand-title {{ font-size:19px; font-weight:700; letter-spacing:-0.3px; margin:0; }}
 .brand-badge {{ font-size:11px; background:#115e59; color:#a7f3d0; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }}
 .brand-badge::before {{ content:""; width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block; }}
 .tagline {{ font-size:12px; color:#99f6e4; margin-top:3px; }}
-.header-links a {{ color:#ccfbf1; text-decoration:none; font-size:13px; font-weight:500; margin-left:18px; transition:color 0.15s; }}
-.header-links a:hover {{ color:#fff; }}
-.container {{ max-width:1280px; margin:24px auto; padding:0 20px; }}
+.header-links a {{ color:#ccfbf1; text-decoration:none; font-size:13px; font-weight:500; margin-left:18px; transition:color 0.15s; border-radius:4px; padding:4px 8px; }}
+.header-links a:hover {{ color:#fff; background:rgba(255,255,255,0.08); }}
+.container {{ max-width:1320px; margin:24px auto; padding:0 20px; }}
 
 /* Metrics Grid */
-.metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px; }}
-.metric-card {{ background:var(--bg-card); border-radius:8px; padding:16px 18px; text-align:left; border:1px solid var(--border-subtle); box-shadow:0 1px 2px rgba(0,0,0,0.03); }}
-.metric-card .num {{ font-size:28px; font-weight:800; color:var(--text-main); line-height:1.1; letter-spacing:-0.5px; }}
+.metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px; }}
+.metric-card {{ background:var(--bg-card); border-radius:8px; padding:16px 18px; text-align:left; border:1px solid var(--border-subtle); box-shadow:0 1px 2px rgba(0,0,0,0.03); text-decoration:none; color:inherit; display:block; transition:transform 0.1s ease, box-shadow 0.15s ease, border-color 0.15s ease; }}
+.metric-card:hover {{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.05); border-color:#cbd5e1; }}
+.metric-card:active {{ transform:translateY(0); }}
+.metric-card .num {{ font-size:28px; font-weight:800; color:var(--text-main); line-height:1.1; letter-spacing:-0.5px; font-variant-numeric:tabular-nums; }}
 .metric-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-top:6px; letter-spacing:0.5px; font-weight:600; }}
 .highlight-indigo {{ border-left:4px solid #6366f1; }}
 .highlight-indigo .num {{ color:#4338ca; }}
@@ -441,26 +474,31 @@ header {{ background:var(--teal-dark); color:#fff; padding:18px 32px; display:fl
 .tabs a.active {{ background:var(--teal-primary); color:#ffffff; }}
 
 /* Live Search Input */
-.search-box {{ display:inline-flex; align-items:center; background:var(--border-light); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 12px; min-width:280px; gap:8px; }}
+.search-box {{ display:inline-flex; align-items:center; background:var(--border-light); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 12px; min-width:320px; gap:8px; position:relative; }}
+.search-box:focus-within {{ border-color:var(--teal-primary); background:#ffffff; box-shadow:0 0 0 2px rgba(13,148,136,0.15); }}
 .search-box input {{ border:none; background:transparent; font-size:13px; outline:none; width:100%; font-family:inherit; color:var(--text-main); }}
-.search-count {{ font-size:11px; font-weight:600; color:var(--teal-primary); white-space:nowrap; }}
+.kbd-hint {{ font-size:11px; font-family:inherit; background:#ffffff; border:1px solid var(--border-subtle); border-radius:4px; padding:2px 6px; color:var(--text-muted); line-height:1; pointer-events:none; }}
+.search-count {{ font-size:11px; font-weight:600; color:var(--teal-primary); white-space:nowrap; font-variant-numeric:tabular-nums; }}
+.clear-search-btn {{ background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:2px 4px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; }}
+.clear-search-btn:hover {{ color:var(--text-main); background:#e2e8f0; }}
 
 /* Table */
-.table-wrap {{ background:var(--bg-card); border-radius:8px; border:1px solid var(--border-subtle); overflow-x:auto; box-shadow:0 1px 3px rgba(0,0,0,0.03); }}
+.table-wrap {{ background:var(--bg-card); border-radius:8px; border:1px solid var(--border-subtle); overflow-x:auto; box-shadow:0 1px 3px rgba(0,0,0,0.03); -webkit-overflow-scrolling:touch; }}
 table {{ width:100%; border-collapse:collapse; text-align:left; }}
-th {{ background:#f8fafc; padding:12px 16px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; border-bottom:1px solid var(--border-subtle); }}
+caption.sr-only {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }}
+th {{ background:#f8fafc; padding:12px 16px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; border-bottom:1px solid var(--border-subtle); white-space:nowrap; }}
 td {{ padding:14px 16px; border-bottom:1px solid var(--border-light); font-size:13px; vertical-align:top; }}
 tr:hover td {{ background:#fbfcfd; }}
 
-/* Score pill */
-.score-circle {{ width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; }}
+/* Score circle */
+.score-circle {{ width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; font-variant-numeric:tabular-nums; }}
 .score-top {{ background:#dcfce7; color:#15803d; border:2px solid #86efac; }}
 .score-high {{ background:#ccfbf1; color:#0f766e; border:2px solid #5eead4; }}
 .score-mid {{ background:#fef3c7; color:#b45309; border:2px solid #fde68a; }}
 .score-low {{ background:#f1f5f9; color:#475569; border:2px solid #cbd5e1; }}
 
 /* Priority and Schedule Badges */
-.priority-wrap {{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; }}
+.priority-wrap {{ display:flex; flex-direction:column; gap:5px; align-items:flex-start; }}
 .badge {{ display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }}
 .p-high {{ background:#ecfdf5; color:#065f46; }}
 .p-med {{ background:#fffbeb; color:#92400e; }}
@@ -490,6 +528,7 @@ tr:hover td {{ background:#fbfcfd; }}
 .elig-unknown {{ background:#fef3c7; color:#92400e; }}
 .elig-ineligible {{ background:#fee2e2; color:#991b1b; }}
 
+.deadline-val {{ font-variant-numeric:tabular-nums; font-weight:600; }}
 .state-pill {{ font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 7px; border-radius:4px; }}
 .state-seen {{ background:#f1f5f9; color:#64748b; }}
 .state-tracked {{ background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }}
@@ -498,7 +537,7 @@ tr:hover td {{ background:#fbfcfd; }}
 
 /* Actions */
 .btn-group {{ display:flex; gap:4px; align-items:center; justify-content:flex-end; }}
-.btn {{ display:inline-flex; align-items:center; justify-content:center; padding:5px 9px; border-radius:5px; font-size:12px; font-weight:600; text-decoration:none; transition:all 0.15s; border:1px solid transparent; }}
+.btn {{ display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:5px; font-size:12px; font-weight:600; text-decoration:none; transition:all 0.15s; border:1px solid transparent; min-height:30px; }}
 .btn-track {{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }}
 .btn-track:hover {{ background:#059669; color:#fff; }}
 .btn-applied {{ background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }}
@@ -508,18 +547,29 @@ tr:hover td {{ background:#fbfcfd; }}
 .btn-detail {{ background:#f8fafc; color:#475569; border-color:var(--border-subtle); }}
 .btn-detail:hover {{ background:#e2e8f0; color:var(--text-main); }}
 
+/* Empty States */
+.empty-state {{ text-align:center; padding:48px 24px; color:var(--text-muted); }}
+.empty-icon {{ font-size:36px; margin-bottom:12px; }}
+.empty-state h3 {{ font-size:16px; font-weight:700; color:var(--text-main); margin:0 0 6px 0; }}
+.empty-state p {{ font-size:13px; max-width:440px; margin:0 auto 16px auto; line-height:1.5; }}
+
 @media (max-width: 768px) {{
   header {{ padding:14px 18px; }}
   .container {{ padding:0 12px; }}
   .search-box {{ min-width:100%; }}
   .controls {{ flex-direction:column; align-items:stretch; }}
+  .tabs {{ overflow-x:auto; padding-bottom:4px; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; }}
+  .metrics {{ grid-template-columns:repeat(2, 1fr); }}
 }}
 </style>
 <script>
 function filterTable() {{
   const query = document.getElementById('radarSearch').value.toLowerCase().trim();
   const rows = document.querySelectorAll('tbody tr.event-item');
+  const emptyBox = document.getElementById('noMatchState');
+  const clearBtn = document.getElementById('clearSearchBtn');
   let matchCount = 0;
+
   rows.forEach(r => {{
     const text = r.innerText.toLowerCase();
     if (!query || text.includes(query)) {{
@@ -529,68 +579,106 @@ function filterTable() {{
       r.style.display = 'none';
     }}
   }});
+
   const countEl = document.getElementById('searchCount');
   if (query) {{
     countEl.textContent = matchCount + ' matching';
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+    if (emptyBox) emptyBox.style.display = matchCount === 0 ? 'block' : 'none';
   }} else {{
     countEl.textContent = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (emptyBox) emptyBox.style.display = 'none';
   }}
 }}
+
+function clearSearch() {{
+  const input = document.getElementById('radarSearch');
+  if (input) {{
+    input.value = '';
+    filterTable();
+    input.focus();
+  }}
+}}
+
+window.addEventListener('keydown', function(e) {{
+  const input = document.getElementById('radarSearch');
+  if (e.key === '/' && document.activeElement !== input) {{
+    e.preventDefault();
+    if (input) {{
+      input.focus();
+      input.select();
+    }}
+  }} else if (e.key === 'Escape' && document.activeElement === input) {{
+    clearSearch();
+    input.blur();
+  }}
+}});
 </script>
 </head>
 <body>
-<header>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<header role="banner">
   <div class="brand">
     <div>
       <div style="display:flex; align-items:center; gap:8px;">
         <h1 class="brand-title">🛰️ Buildathon Radar</h1>
-        <span class="brand-badge">Live Radar</span>
+        <span class="brand-badge" aria-label="Status: Live Radar">Live Radar</span>
       </div>
-      <div class="tagline">Indian High-School Student Edition (Class 11/12) &middot; Bengaluru &middot; Free & Weekend Prioritized</div>
+      <div class="tagline">Indian High-School Student Edition (Class 11/12) &middot; Bengaluru &middot; Free &amp; Weekend Prioritized</div>
     </div>
   </div>
-  <div class="header-links">
+  <nav class="header-links" aria-label="Quick links">
     <a href="/list">Read-Only List</a>
-    <a href="/api/events" target="_blank">JSON API</a>
-  </div>
+    <a href="/api/events" target="_blank" rel="noopener">JSON API</a>
+  </nav>
 </header>
-<div class="container">
+<main id="main-content" role="main" class="container">
   {cards_html}
   <div class="controls">
-    <div class="tabs">
+    <nav class="tabs" aria-label="Filter views">
       <a href="/dashboard" class="{'active' if not current_filter else ''}">All Active ({total})</a>
-      <a href="/dashboard?filter=free_weekend" class="{'active' if current_filter == 'free_weekend' else ''}">Free &amp; Weekend ({free_weekend_count})</a>
-      <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">High Priority ({high_count})</a>
-      <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">Needs Verification ({unverified_count})</a>
-      <a href="/dashboard?filter=tracked" class="{'active' if current_filter == 'tracked' else ''}">Shortlisted ({tracked_count})</a>
-      <a href="/dashboard?filter=applied" class="{'active' if current_filter == 'applied' else ''}">Applied ({applied_count})</a>
-      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">Deadlines</a>
-    </div>
+      <a href="/dashboard?filter=free_weekend" class="{'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend ({free_weekend_count})</a>
+      <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">🔥 High Priority ({high_count})</a>
+      <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">⚠️ Needs Verification ({unverified_count})</a>
+      <a href="/dashboard?filter=tracked" class="{'active' if current_filter == 'tracked' else ''}">📌 Shortlisted ({tracked_count})</a>
+      <a href="/dashboard?filter=applied" class="{'active' if current_filter == 'applied' else ''}">🎯 Applied ({applied_count})</a>
+      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">📅 Deadlines</a>
+    </nav>
     <div class="search-box">
-      <span>🔍</span>
-      <input type="search" id="radarSearch" placeholder="Filter by title, AI theme, host, city..." aria-label="Search hackathons" oninput="filterTable()">
-      <span id="searchCount" class="search-count"></span>
+      <span aria-hidden="true">🔍</span>
+      <input type="search" id="radarSearch" placeholder="Filter by title, AI theme, host, city..." aria-label="Search opportunities" oninput="filterTable()">
+      <kbd class="kbd-hint" title="Press / to focus search" aria-hidden="true">/</kbd>
+      <span id="searchCount" class="search-count" role="status" aria-live="polite"></span>
+      <button id="clearSearchBtn" class="clear-search-btn" style="display:none;" onclick="clearSearch()" aria-label="Clear search">✕</button>
     </div>
   </div>
   <div class="table-wrap">
-    <table>
+    <table role="table">
+      <caption class="sr-only">Student-eligible and prioritized buildathons and hackathons</caption>
       <thead>
         <tr>
-          <th width="150">Priority &amp; Timing</th>
-          <th width="50">Score</th>
-          <th>Event &amp; Recommendation Rationale</th>
-          <th width="110">Eligibility</th>
-          <th width="110">Deadline</th>
-          <th width="80">State</th>
-          <th width="220" style="text-align:right;">Actions</th>
+          <th scope="col" width="160">Priority &amp; Timing</th>
+          <th scope="col" width="50">Score</th>
+          <th scope="col">Event &amp; Recommendation Rationale</th>
+          <th scope="col" width="115">Eligibility</th>
+          <th scope="col" width="110">Deadline</th>
+          <th scope="col" width="80">State</th>
+          <th scope="col" width="230" style="text-align:right;">Actions</th>
         </tr>
       </thead>
       <tbody>
         {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:40px; color:#64748b;">No active opportunities match the selected criteria.</td></tr>'}
       </tbody>
     </table>
+    <div id="noMatchState" class="empty-state" style="display:none;" role="status">
+      <div class="empty-icon" aria-hidden="true">🔎</div>
+      <h3>No matching events found</h3>
+      <p>Try searching for different keywords, AI tracks, city names, or clear your query.</p>
+      <button class="btn btn-detail" onclick="clearSearch()">Clear search query</button>
+    </div>
   </div>
-</div>
+</main>
 </body>
 </html>"""
 
