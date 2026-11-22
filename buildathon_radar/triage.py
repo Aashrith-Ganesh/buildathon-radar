@@ -66,12 +66,6 @@ ENABLE_JEV_TRIAGE = os.getenv("ENABLE_JEV_TRIAGE", "false").strip().lower() in {
     "on",
 }
 
-# Categories that gate. `student_college` mirrors exclusion 1 in agent.py's
-# rubric, which already rejects university, college, student-branch and
-# student-chapter events outright regardless of theme, location or prize. So
-# this drops only listings Claude is required to throw away anyway: the
-# deterministic rule is the ground truth, and Jev is just reaching it sooner.
-# In the preview crop this was 37 of 120 listings (~31%).
 DROP_CATEGORIES = {"student_college"}
 
 # Only drop on a confident classification. ChoiceAnswer.confidence spreads

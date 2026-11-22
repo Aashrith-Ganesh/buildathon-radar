@@ -1,10 +1,11 @@
 import html as html_lib
+import os
 from datetime import datetime
 from urllib.parse import quote
 
 from buildathon_radar import tracker_store
 
-TRACKER_BASE = "https://radar.job-joseph.com"
+TRACKER_BASE = os.getenv("TRACKER_BASE_URL", "https://radar.job-joseph.com").rstrip("/")
 
 TIER_ORDER = ["must_see", "worth_a_look", "radar"]
 

@@ -8,6 +8,13 @@ import pytest
 from buildathon_radar import deliver
 
 
+@pytest.fixture(autouse=True)
+def dummy_email_env(monkeypatch):
+    monkeypatch.setenv("EMAIL_ADDRESS", "test@example.com")
+    monkeypatch.setenv("EMAIL_PASSWORD", "testpass")
+    monkeypatch.setenv("ENABLE_EMAIL", "true")
+
+
 def _decoded_subject(sent_msg):
     parsed = message_from_string(sent_msg)
     parts = decode_header(parsed["Subject"])

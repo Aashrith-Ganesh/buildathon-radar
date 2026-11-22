@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.buildathon.radar</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/aashrith/Projects/buildathon-radar</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/aashrith/Projects/buildathon-radar/venv/bin/python</string>
+        <string>main.py</string>
+    </array>
+
+    <!-- Run every Sunday at 17:00 IST (5:00 PM) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>0</integer>
+        <key>Hour</key>
+        <integer>17</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/aashrith/Projects/buildathon-radar/logs/radar.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/aashrith/Projects/buildathon-radar/logs/radar_error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

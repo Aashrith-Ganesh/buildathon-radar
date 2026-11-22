@@ -1,9 +1,11 @@
 import hashlib
 import hmac
 import os
+import secrets
 import sqlite3
-from datetime import timedelta, timezone
 from datetime import datetime as _datetime
+from datetime import timedelta, timezone
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from dotenv import load_dotenv
 
@@ -12,28 +14,55 @@ load_dotenv()
 DB_FILE = "tracker.db"
 IST = timezone(timedelta(hours=5, minutes=30))
 
-STATE_RANK = {"seen": 0, "tracked": 1, "applied": 2, "over": 3}
-ACTION_TO_STATE = {"track": "tracked", "applied": "applied"}
+STATE_RANK = {
+    "discovered": 0,
+    "seen": 1,
+    "ineligible": 1,
+    "rejected": 2,
+    "tracked": 3,
+    "applied": 4,
+    "over": 5,
+}
+
+ACTION_TO_STATE = {
+    "track": "tracked",
+    "applied": "applied",
+    "reject": "rejected",
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
-    event_id     TEXT PRIMARY KEY,
-    title        TEXT NOT NULL,
-    url          TEXT NOT NULL,
-    host         TEXT,
-    source       TEXT,
-    event_start  TEXT,
-    event_end    TEXT,
-    state        TEXT NOT NULL DEFAULT 'seen'
-                 CHECK (state IN ('seen','tracked','applied','over')),
-    outcome      TEXT
-                 CHECK (outcome IS NULL OR outcome IN
-                        ('did_not_participate','participated','won')),
-    first_seen   TEXT NOT NULL,
-    tracked_at   TEXT,
-    applied_at   TEXT,
-    over_at      TEXT,
-    updated_at   TEXT NOT NULL
+    event_id              TEXT PRIMARY KEY,
+    title                 TEXT NOT NULL,
+    url                   TEXT NOT NULL,
+    host                  TEXT,
+    source                TEXT,
+    summary               TEXT,
+    category              TEXT,
+    location              TEXT,
+    mode                  TEXT,
+    event_start           TEXT,
+    event_end             TEXT,
+    registration_deadline TEXT,
+    team_size             TEXT,
+    eligibility           TEXT,
+    age_restrictions      TEXT,
+    prize                 TEXT,
+    priority              TEXT,
+    score                 INTEGER DEFAULT 0,
+    why                   TEXT,
+    state                 TEXT NOT NULL DEFAULT 'seen'
+                          CHECK (state IN ('discovered', 'seen', 'tracked', 'applied', 'rejected', 'ineligible', 'over')),
+    outcome               TEXT
+                          CHECK (outcome IS NULL OR outcome IN
+                                 ('did_not_participate', 'participated', 'won')),
+    first_seen            TEXT NOT NULL,
+    last_verified         TEXT,
+    tracked_at            TEXT,
+    applied_at            TEXT,
+    rejected_at           TEXT,
+    over_at               TEXT,
+    updated_at            TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS action_log (
@@ -45,6 +74,8 @@ CREATE TABLE IF NOT EXISTS action_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_state ON events(state);
+CREATE INDEX IF NOT EXISTS idx_events_priority ON events(priority);
+CREATE INDEX IF NOT EXISTS idx_events_deadline ON events(registration_deadline);
 """
 
 
@@ -52,52 +83,156 @@ def _now_ist():
     return _datetime.now(IST).isoformat()
 
 
+def normalize_url(url: str) -> str:
+    """Canonicalize and normalize URLs across platforms.
+    Strips trailing slashes, tracking parameters (UTM, etc.), forces https,
+    and folds known alias domains (e.g. lu.ma -> luma.com)."""
+    if not url:
+        return ""
+    u = url.strip()
+    if u.startswith("http://"):
+        u = "https://" + u[len("http://") :]
+    if u.startswith("https://lu.ma/"):
+        u = "https://luma.com/" + u[len("https://lu.ma/") :]
+
+    try:
+        parsed = urlparse(u)
+        scheme = parsed.scheme.lower() or "https"
+        netloc = parsed.netloc.lower()
+
+        # Filter out common marketing/tracking parameters
+        tracking_keys = {
+            "utm_source", "utm_medium", "utm_campaign", "utm_term",
+            "utm_content", "ref", "fbclid", "gclid", "mc_eid", "_hsenc"
+        }
+        query_dict = parse_qs(parsed.query, keep_blank_values=False)
+        clean_query_dict = {
+            k: v for k, v in query_dict.items()
+            if k.lower() not in tracking_keys and not k.lower().startswith("utm_")
+        }
+        clean_query = urlencode(clean_query_dict, doseq=True)
+        path = parsed.path.rstrip("/")
+        if not path and not clean_query:
+            path = "/"
+
+        return urlunparse((scheme, netloc, path, parsed.params, clean_query, ""))
+    except Exception:
+        return u.rstrip("/")
+
+
+def _migrate_schema_if_needed(conn: sqlite3.Connection):
+    """Adds missing columns dynamically if migrating from an older schema."""
+    cursor = conn.execute("PRAGMA table_info(events)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    columns_to_add = {
+        "summary": "TEXT",
+        "category": "TEXT",
+        "location": "TEXT",
+        "mode": "TEXT",
+        "registration_deadline": "TEXT",
+        "team_size": "TEXT",
+        "eligibility": "TEXT",
+        "age_restrictions": "TEXT",
+        "prize": "TEXT",
+        "priority": "TEXT",
+        "score": "INTEGER DEFAULT 0",
+        "why": "TEXT",
+        "last_verified": "TEXT",
+        "rejected_at": "TEXT",
+    }
+
+    for col_name, col_type in columns_to_add.items():
+        if col_name not in existing_columns:
+            try:
+                conn.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+    conn.commit()
+
+
 def connect(db_path=None):
-    """Opens (creating if needed) the tracker SQLite database, sets WAL mode
-    and a busy timeout so the always-on tracker service and the weekly digest
-    script can safely interleave writes, and ensures the schema exists.
-    Idempotent: safe to call repeatedly against the same file."""
+    """Opens (creating if needed) the tracker SQLite database in WAL mode."""
     path = db_path or DB_FILE
     conn = sqlite3.connect(path, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.executescript(SCHEMA)
+    _migrate_schema_if_needed(conn)
     conn.commit()
     return conn
 
 
-def upsert_seen(conn, items):
-    """Inserts each item as a new 'seen' row, or refreshes its denormalized
-    metadata on an existing row without touching participation state. Only
-    the weekly digest run calls this; the tracker service never inserts."""
+def upsert_events(conn, items, evaluated_map=None):
+    """Upserts full event metadata into the database while preserving existing user states.
+    evaluated_map is optional mapping of event_id -> evaluated dict with score, priority, why."""
     now = _now_ist()
     for item in items:
         event_id = item.get("event_id")
         if not event_id:
             continue
+
+        eval_info = (evaluated_map or {}).get(event_id, {})
+        priority = eval_info.get("priority") or item.get("priority") or "UNKNOWN"
+        score = eval_info.get("score") if eval_info.get("score") is not None else item.get("score", 0)
+        why = eval_info.get("why") or item.get("why") or ""
+        eligibility = eval_info.get("eligibility") or item.get("eligibility") or "UNKNOWN"
+        age_restrictions = eval_info.get("age_restrictions") or item.get("age_restrictions") or "None specified"
+        norm_url = normalize_url(item.get("url") or "")
+
         conn.execute(
             """
-            INSERT INTO events (event_id, title, url, host, source,
-                                event_start, event_end, state, first_seen, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?)
+            INSERT INTO events (
+                event_id, title, url, host, source, summary, category,
+                location, mode, event_start, event_end, registration_deadline,
+                team_size, eligibility, age_restrictions, prize, priority,
+                score, why, state, first_seen, last_verified, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
-                title       = excluded.title,
-                url         = excluded.url,
-                host        = excluded.host,
-                source      = excluded.source,
-                event_start = COALESCE(excluded.event_start, events.event_start),
-                event_end   = COALESCE(excluded.event_end,   events.event_end),
-                updated_at  = excluded.updated_at
+                title                 = excluded.title,
+                url                   = excluded.url,
+                host                  = excluded.host,
+                source                = excluded.source,
+                summary               = COALESCE(excluded.summary, events.summary),
+                category              = COALESCE(excluded.category, events.category),
+                location              = excluded.location,
+                mode                  = excluded.mode,
+                event_start           = COALESCE(excluded.event_start, events.event_start),
+                event_end             = COALESCE(excluded.event_end, events.event_end),
+                registration_deadline = COALESCE(excluded.registration_deadline, events.registration_deadline),
+                team_size             = COALESCE(excluded.team_size, events.team_size),
+                eligibility           = excluded.eligibility,
+                age_restrictions      = excluded.age_restrictions,
+                prize                 = COALESCE(excluded.prize, events.prize),
+                priority              = excluded.priority,
+                score                 = excluded.score,
+                why                   = excluded.why,
+                last_verified         = excluded.last_verified,
+                updated_at            = excluded.updated_at
             """,
             (
                 event_id,
                 item.get("title") or "Unknown",
-                item.get("url") or "",
+                norm_url,
                 item.get("host"),
                 item.get("source"),
+                item.get("summary") or "",
+                item.get("category") or "Hackathon",
+                item.get("location") or "Unknown",
+                item.get("mode") or "unknown",
                 item.get("event_start"),
                 item.get("event_end"),
+                item.get("registration_deadline"),
+                item.get("team_size") or "3-5 preferred",
+                eligibility,
+                age_restrictions,
+                item.get("prize") or "",
+                priority,
+                score,
+                why,
+                now,
                 now,
                 now,
             ),
@@ -105,10 +240,23 @@ def upsert_seen(conn, items):
     conn.commit()
 
 
+def upsert_seen(conn, items):
+    """Backwards-compatible seen upsert."""
+    eval_map = {}
+    for it in items:
+        eid = it.get("event_id")
+        if eid:
+            eval_map[eid] = {
+                "priority": it.get("priority", "HIGH PRIORITY"),
+                "score": it.get("score", 70),
+                "why": it.get("why", ""),
+                "eligibility": it.get("eligibility", "ELIGIBLE"),
+                "age_restrictions": it.get("age_restrictions", "Open"),
+            }
+    upsert_events(conn, items, eval_map)
+
+
 def log_action(conn, event_id, action, result):
-    """Appends one row to the action_log audit trail. Exposed publicly so the
-    tracker service can log a bad_token rejection (which never reaches
-    apply_action, since the signature is checked first)."""
     conn.execute(
         "INSERT INTO action_log (event_id, action, result, occurred_at) VALUES (?, ?, ?, ?)",
         (event_id, action, result, _now_ist()),
@@ -117,46 +265,38 @@ def log_action(conn, event_id, action, result):
 
 
 def apply_action(conn, action, event_id):
-    """Applies a track/applied action to an existing row.
-
-    Returns (result, row) where result is one of "ok", "noop",
-    "unknown_event". Never inserts a new row (only upsert_seen does that), so
-    every call here either updates a row the digest run already created or
-    reports unknown_event. Every call, including unknown/noop, is logged to
-    action_log. State only ever moves upward (seen < tracked < applied);
-    an out-of-order or repeat click is a noop, never a downgrade or an error.
-    """
+    """Applies a track/applied/reject action to an existing row.
+    Returns (result, row) where result is 'ok', 'noop', or 'unknown_event'."""
     now = _now_ist()
+    if action not in ACTION_TO_STATE:
+        return "noop", None
+
     target_state = ACTION_TO_STATE[action]
-    row = conn.execute(
-        "SELECT * FROM events WHERE event_id = ?", (event_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM events WHERE event_id = ?", (event_id,)).fetchone()
 
     if row is None:
         log_action(conn, event_id, action, "unknown_event")
         return "unknown_event", None
 
-    if STATE_RANK[row["state"]] >= STATE_RANK[target_state]:
+    # Track rank to prevent accidental downgrade (except explicit reject)
+    current_rank = STATE_RANK.get(row["state"], 0)
+    target_rank = STATE_RANK.get(target_state, 0)
+    if action != "reject" and current_rank >= target_rank:
         log_action(conn, event_id, action, "noop")
         return "noop", row
 
-    ts_column = "tracked_at" if target_state == "tracked" else "applied_at"
+    ts_column = "tracked_at" if target_state == "tracked" else ("applied_at" if target_state == "applied" else "rejected_at")
     conn.execute(
         f"UPDATE events SET state = ?, {ts_column} = ?, updated_at = ? WHERE event_id = ?",
         (target_state, now, now, event_id),
     )
     conn.commit()
     log_action(conn, event_id, action, "ok")
-    row = conn.execute("SELECT * FROM events WHERE event_id = ?", (event_id,)).fetchone()
-    # (2.5 note: a future calendar trigger attaches exactly here, after a
-    #  successful "ok" transition: POST event details to an n8n webhook that
-    #  creates the Google Calendar entry. OAuth lives in n8n, not here. Not
-    #  built; this comment only marks the attach point.)
-    return "ok", row
+    updated_row = conn.execute("SELECT * FROM events WHERE event_id = ?", (event_id,)).fetchone()
+    return "ok", updated_row
 
 
 def get_tracked_open(conn, today_str):
-    """Tracked events not yet lapsed, for the digest's reminder section."""
     return conn.execute(
         """
         SELECT * FROM events
@@ -170,7 +310,6 @@ def get_tracked_open(conn, today_str):
 
 
 def get_applied_open(conn, today_str):
-    """Applied events not yet past their end date, for the participation log."""
     return conn.execute(
         """
         SELECT * FROM events
@@ -183,17 +322,55 @@ def get_applied_open(conn, today_str):
 
 
 def get_all_events(conn):
-    """Every row in the store, every state, most recently updated first.
-    Read-only helper for the tracker service's /list view; never used by
-    any state-changing code path."""
-    return conn.execute("SELECT * FROM events ORDER BY updated_at DESC").fetchall()
+    return conn.execute("SELECT * FROM events ORDER BY score DESC, updated_at DESC").fetchall()
+
+
+def get_events_by_filter(conn, priority=None, state=None, eligibility=None, search=None, limit=100):
+    query = "SELECT * FROM events WHERE 1=1"
+    params = []
+    if priority:
+        query += " AND priority = ?"
+        params.append(priority)
+    if state:
+        query += " AND state = ?"
+        params.append(state)
+    if eligibility:
+        query += " AND eligibility = ?"
+        params.append(eligibility)
+    if search:
+        query += " AND (title LIKE ? OR host LIKE ? OR summary LIKE ?)"
+        s = f"%{search}%"
+        params.extend([s, s, s])
+
+    query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC LIMIT ?"
+    params.append(limit)
+    return conn.execute(query, params).fetchall()
+
+
+def get_upcoming_deadlines(conn, limit=10):
+    today = _datetime.now(IST).strftime("%Y-%m-%d")
+    return conn.execute(
+        """
+        SELECT * FROM events
+        WHERE (registration_deadline >= ? OR event_start >= ?)
+          AND state != 'rejected'
+        ORDER BY COALESCE(registration_deadline, event_start) ASC
+        LIMIT ?
+        """,
+        (today, today, limit),
+    ).fetchall()
+
+
+def get_secret():
+    """Retrieves or generates a secure TRACKER_SECRET without requiring manual setup."""
+    sec = os.getenv("TRACKER_SECRET")
+    if not sec:
+        sec = secrets.token_hex(32)
+        os.environ["TRACKER_SECRET"] = sec
+    return sec
 
 
 def sign_action(action, event_id, secret=None):
-    """HMAC-SHA256 of "action:event_id" under TRACKER_SECRET, hex, truncated
-    to 20 chars. Binding the action into the MAC means a Track link cannot be
-    replayed as an Applied link. Returns None if no secret is configured
-    (callers use this to skip rendering unsigned dead links)."""
     key = os.getenv("TRACKER_SECRET") if secret is None else secret
     if not key:
         return None
@@ -202,8 +379,6 @@ def sign_action(action, event_id, secret=None):
 
 
 def verify_action(action, event_id, token, secret=None):
-    """Constant-time verification of a signed action link. False on a
-    missing token, a missing secret, or a mismatch."""
     if not token:
         return False
     expected = sign_action(action, event_id, secret=secret)

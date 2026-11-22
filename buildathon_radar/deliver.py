@@ -32,28 +32,44 @@ def save_to_archive(digest_text):
     return filename
 
 
+def save_html_to_archive(html_digest):
+    os.makedirs(ARCHIVE_DIR, exist_ok=True)
+    week_label = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{ARCHIVE_DIR}/radar_{week_label}.html"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(html_digest)
+    return filename
+
+
 def _count_picks(digest_text):
     return digest_text.count("\n### [")
 
 
 def send_digest(digest_text, html_digest):
-    """Archives the digest, then emails it. Never raises. Returns True only
-    once Gmail has accepted the message and False on every other path, so
-    main.py can hold back the cache write when the email did not go out."""
+    """Archives the digest locally as markdown and HTML, then optionally emails it if configured.
+    Returns True when local archive succeeds and (if enabled) email succeeds.
+    Does not crash if email credentials are unconfigured."""
     try:
         save_to_archive(digest_text)
+        save_html_to_archive(html_digest)
     except Exception as e:
         print(f"  WARNING: Could not save to archive: {e}")
 
     sender = os.getenv("EMAIL_ADDRESS")
     password = os.getenv("EMAIL_PASSWORD")
-    recipient = os.getenv("EMAIL_ADDRESS")
+    recipient = os.getenv("RECIPIENT_EMAIL") or sender
 
     if not sender or not password:
         print(
             "  ERROR: EMAIL_ADDRESS or EMAIL_PASSWORD not set in .env, skipping email send."
         )
         return False
+
+    # If testing or dry-run flag or explicit disable
+    enable_email = os.getenv("ENABLE_EMAIL", "true").strip().lower() in ("1", "true", "yes")
+    if not enable_email:
+        print("  INFO: ENABLE_EMAIL is false; skipping email send. Local reports saved in archive/.")
+        return True
 
     try:
         pick_count = _count_picks(digest_text)
@@ -90,16 +106,13 @@ def send_digest(digest_text, html_digest):
 
 
 def send_failure_email(error_text):
-    """Sent by main.py's fatal handler on a non-dry crashing run, so silence
-    always means the pipeline is broken, never masked by a swallowed error."""
+    """Sent on fatal failure if email is configured; logs cleanly otherwise."""
     sender = os.getenv("EMAIL_ADDRESS")
     password = os.getenv("EMAIL_PASSWORD")
-    recipient = os.getenv("EMAIL_ADDRESS")
+    recipient = os.getenv("RECIPIENT_EMAIL") or sender
 
     if not sender or not password:
-        print(
-            "  ERROR: EMAIL_ADDRESS or EMAIL_PASSWORD not set in .env, cannot send failure email."
-        )
+        print("  INFO: Failure logged to console; email not configured.")
         return
 
     try:
@@ -111,14 +124,12 @@ def send_failure_email(error_text):
         body = (
             "The weekly Buildathon Radar run failed with an error:\n\n"
             f"{error_text}\n\n"
-            "Check journalctl --user -u buildathon-radar.service for details."
+            "Check local logs for details."
         )
         msg.attach(MIMEText(body, "plain"))
 
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, password)
             server.sendmail(sender, recipient, msg.as_string())
-
-        print("Failure notice sent to your inbox.")
     except Exception as e:
-        print(f"  ERROR: Failed to send failure email, {e}")
+        print(f"  WARNING: Could not send failure email: {e}")

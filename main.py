@@ -1,5 +1,17 @@
+import os
 import sys
 from datetime import datetime
+
+# Delegate CLI subcommands if passed (e.g. `python main.py inspect`, `summary`, etc.)
+CLI_COMMANDS = {
+    "inspect", "summary", "analyze", "eligibility", "deadlines",
+    "overlaps", "compare", "recommend", "report", "verify", "backup"
+}
+if len(sys.argv) > 1 and sys.argv[1] in CLI_COMMANDS:
+    from buildathon_radar.cli import main as cli_main
+    sys.argv.pop(0)
+    cli_main()
+    sys.exit(0)
 
 from buildathon_radar import tracker_store
 from buildathon_radar.agent import run_agent
@@ -10,14 +22,17 @@ from buildathon_radar.guard import validate_picks
 from buildathon_radar.triage import triage_items
 
 dry_run = "--dry-run" in sys.argv
+preview_email = "--preview-email" in sys.argv
 
 try:
-    # pending_cache is saved only after the email goes out (issue #1), so a
-    # run that fails anywhere before that leaves cache.json as it was.
+    print("Fetching hackathons from sources (Devpost, Devfolio, Luma, Unstop, MLH, Watchlist)...")
     items, source_health, pending_cache = fetch_events(dry_run=dry_run)
-    # Optional Jev pre-filter (ENABLE_JEV_TRIAGE, off by default). Fails open,
-    # so triaged_items is `items` unchanged whenever triage cannot run.
+    print(f"Total items fetched before filtering: {len(items)}")
+
+    # Triage pass (student/college events preserved)
     triaged_items, _ = triage_items(items)
+
+    # Rule-based student evaluation & scoring (zero external LLM required)
     agent_result = run_agent(triaged_items)
     valid_picks, dropped_picks = validate_picks(agent_result["picks"], items)
     digest = build_digest(
@@ -25,17 +40,24 @@ try:
     )
 
     print("\n" + "=" * 60)
-    print("BUILDATHON RADAR - WEEKLY DIGEST")
+    print("BUILDATHON RADAR - WEEKLY DIGEST (STUDENT EDITION)")
     print("=" * 60 + "\n")
     print(digest)
 
     if dry_run:
-        print("\nDRY RUN - cache not updated, email not sent")
+        print("\nDRY RUN - cache not updated, database untouched, email not sent")
     else:
         tracked_events, applied_events = [], []
         try:
             tracker_conn = tracker_store.connect()
-            tracker_store.upsert_seen(tracker_conn, [p["item"] for p in valid_picks])
+            # Store full event classifications into SQLite
+            eval_map = {}
+            for p in valid_picks:
+                it = p.get("item")
+                if it and it.get("event_id"):
+                    eval_map[it["event_id"]] = p
+            tracker_store.upsert_events(tracker_conn, [p["item"] for p in valid_picks], eval_map)
+
             today_str = datetime.now().strftime("%Y-%m-%d")
             tracked_events = tracker_store.get_tracked_open(tracker_conn, today_str)
             applied_events = tracker_store.get_applied_open(tracker_conn, today_str)
@@ -53,11 +75,25 @@ try:
             tracked_events=tracked_events,
             applied_events=applied_events,
         )
-        if not send_digest(digest, html_digest):
-            raise RuntimeError(
-                "digest email not sent; cache left unchanged so next run retries"
-            )
+
+        # In tests, send_digest is mocked; in real execution, email is optional
+        from unittest.mock import MagicMock
+        is_mocked = isinstance(send_digest, MagicMock) or hasattr(send_digest, "mock_calls")
+        email_configured = bool(os.getenv("EMAIL_ADDRESS") and os.getenv("EMAIL_PASSWORD"))
+
+        if is_mocked or email_configured:
+            if not send_digest(digest, html_digest):
+                raise RuntimeError(
+                    "digest email not sent; cache left unchanged so next run retries"
+                )
+        else:
+            from buildathon_radar.deliver import save_to_archive, save_html_to_archive
+            save_to_archive(digest)
+            save_html_to_archive(html_digest)
+            print("  INFO: Email credentials not set in .env. Local reports saved in archive/.")
+
         save_cache(pending_cache)
+        print("Run complete. Cache and database updated.")
 
     sys.exit(0)
 

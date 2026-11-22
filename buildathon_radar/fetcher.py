@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import requests
 
+from buildathon_radar import tracker_store
 from buildathon_radar.ai_companies import AI_COMPANIES
 
 CACHE_FILE = "cache.json"
@@ -28,7 +29,7 @@ ENABLE_CV_SOURCE = False
 # competitions run by the 100 companies in ai_companies.py. Added after the
 # radar missed ElevenLabs' $100K "The Search" ad contest, which was only ever
 # announced on ElevenLabs' own site and in press, never on a listing platform.
-ENABLE_WATCHLIST_SOURCE = True
+ENABLE_WATCHLIST_SOURCE = os.getenv("ENABLE_WATCHLIST_SOURCE", "true").strip().lower() in ("1", "true", "yes")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux aarch64) buildathon-radar/1.0",
@@ -1135,13 +1136,181 @@ def fetch_watchlist(companies=None, stats=None):
     return items[:WATCHLIST_MAX_ITEMS], None
 
 
+UNSTOP_API_URL = "https://unstop.com/api/public/opportunity/search-result"
+MLH_EVENTS_URL = "https://mlh.io/seasons/2026/events"
+
+
+def normalise_unstop(src):
+    title = src.get("title") or "Unknown"
+    p_url = src.get("public_url") or ""
+    url = _canonicalize_url(f"https://unstop.com/{p_url}" if p_url else "")
+    org = src.get("organisation")
+    host = org.get("name") if isinstance(org, dict) else (org or "Unstop")
+
+    reqs = src.get("regnRequirements") or {}
+    deadline_raw = reqs.get("end_regn_dt")
+    deadline_ist = _to_ist(deadline_raw)
+    deadline = deadline_ist.strftime("%Y-%m-%d") if deadline_ist else None
+
+    min_team = reqs.get("min_team_size", 1)
+    max_team = reqs.get("max_team_size", 1)
+    team_size = f"{min_team}-{max_team} members" if min_team != max_team else f"{min_team} member"
+
+    start_raw = src.get("start_date")
+    end_raw = src.get("end_date") or deadline_raw
+    starts_ist = _to_ist(start_raw)
+    ends_ist = _to_ist(end_raw)
+    event_start = starts_ist.strftime("%Y-%m-%d") if starts_ist else (deadline if deadline else None)
+    event_end = ends_ist.strftime("%Y-%m-%d") if ends_ist else None
+
+    published = event_start or "Unknown"
+    if event_start and event_end:
+        dates = f"{event_start} to {event_end}"
+    elif event_start:
+        dates = event_start
+    else:
+        dates = "Open registration"
+
+    is_online = reqs.get("work_location_type") == "online" or src.get("job_location") == "Online"
+    location = "Online" if is_online else (src.get("job_location") or "India")
+    mode = "online" if is_online else "in-person"
+
+    filters = [f.get("name") for f in src.get("filters", []) if isinstance(f, dict) and f.get("name")]
+    themes = ["Hackathon"] + filters[:3]
+
+    prizes_list = src.get("prizes") or []
+    prize = ""
+    if prizes_list and isinstance(prizes_list, list):
+        p0 = prizes_list[0]
+        if isinstance(p0, dict):
+            cash = p0.get("cash") or p0.get("max_cash")
+            curr = p0.get("currencyCode", "INR")
+            prize = f"{curr} {cash}" if cash else (p0.get("others") or "Prizes & Certificates")
+
+    summary_parts = [title, f"Organised by {host}"]
+    if filters:
+        summary_parts.append("Eligibility: " + ", ".join(filters[:3]))
+    summary = " | ".join(summary_parts)[:500]
+
+    return {
+        "source": "Unstop",
+        "title": title,
+        "url": url,
+        "summary": summary,
+        "published": published,
+        "location": location,
+        "mode": mode,
+        "host": host,
+        "dates": dates,
+        "prize": prize,
+        "themes": themes,
+        "event_start": event_start,
+        "event_end": event_end,
+        "registration_deadline": deadline,
+        "team_size": team_size,
+        "category": "Hackathon",
+    }
+
+
+def fetch_unstop():
+    """Fetches open hackathons from Unstop's public API."""
+    params = {
+        "opportunity": "hackathons",
+        "per_page": 25,
+        "oppstatus": "open",
+    }
+    try:
+        r = requests.get(UNSTOP_API_URL, headers=HEADERS, params=params, timeout=10)
+        if r.status_code != 200:
+            return [], f"Unstop HTTP {r.status_code}"
+        data = r.json()
+        raw_items = data.get("data", {}).get("data", [])
+        items = []
+        for raw in raw_items:
+            try:
+                item = normalise_unstop(raw)
+                if item.get("url"):
+                    items.append(item)
+            except Exception:
+                continue
+        return items, None
+    except Exception as e:
+        return [], str(e)
+
+
+def normalise_mlh(card_tuple):
+    """Normalises an MLH event card extracted via Schema.org microdata."""
+    url, start_iso, end_iso, title = card_tuple
+    title = title.strip()
+    url = _canonicalize_url(url.strip())
+    event_start = start_iso[:10] if len(start_iso) >= 10 else None
+    event_end = end_iso[:10] if len(end_iso) >= 10 else None
+
+    published = event_start or "Unknown"
+    dates = f"{event_start} to {event_end}" if event_start and event_end else (event_start or "Upcoming")
+
+    is_online = "global" in title.lower() or "online" in title.lower() or "digital" in title.lower()
+    location = "Online" if is_online else "Global / In-Person"
+    mode = "online" if is_online else "in-person"
+
+    return {
+        "source": "MLH",
+        "title": title,
+        "url": url,
+        "summary": f"{title} - Major League Hacking official hackathon season event.",
+        "published": published,
+        "location": location,
+        "mode": mode,
+        "host": "Major League Hacking",
+        "dates": dates,
+        "prize": "Swag, Mentorship, Prizes",
+        "themes": ["MLH Hackathon", "Student Hackathon"],
+        "event_start": event_start,
+        "event_end": event_end,
+        "registration_deadline": event_start,
+        "team_size": "Up to 4 members",
+        "category": "Hackathon",
+    }
+
+
+def fetch_mlh():
+    """Fetches MLH season hackathons via public events page."""
+    try:
+        r = requests.get(MLH_EVENTS_URL, headers=HEADERS, timeout=10)
+        if r.status_code != 200:
+            return [], f"MLH HTTP {r.status_code}"
+        cards = re.findall(
+            r'<meta itemProp="url" content="([^"]+)"/>.*?<meta itemProp="startDate" content="([^"]+)"/>.*?<meta itemProp="endDate" content="([^"]+)"/>.*?<h4[^>]*>([^<]+)</h4>',
+            r.text,
+            re.DOTALL,
+        )
+        items = []
+        for c in cards:
+            try:
+                item = normalise_mlh(c)
+                if item.get("url"):
+                    items.append(item)
+            except Exception:
+                continue
+        return items, None
+    except Exception as e:
+        return [], str(e)
+
+
+ENABLE_UNSTOP_SOURCE = True
+ENABLE_MLH_SOURCE = True
+
 SOURCES = [
     {"name": "Devpost", "fetch": fetch_devpost},
     {"name": "Devfolio", "fetch": fetch_devfolio},
+    {"name": "Luma", "fetch": fetch_luma},
 ]
+if ENABLE_UNSTOP_SOURCE:
+    SOURCES.append({"name": "Unstop", "fetch": fetch_unstop})
+if ENABLE_MLH_SOURCE:
+    SOURCES.append({"name": "MLH", "fetch": fetch_mlh})
 if ENABLE_CV_SOURCE:
     SOURCES.append({"name": "Cerebral Valley", "fetch": fetch_cerebralvalley})
-SOURCES.append({"name": "Luma", "fetch": fetch_luma})
 if ENABLE_WATCHLIST_SOURCE:
     SOURCES.append({"name": "Watchlist", "fetch": fetch_watchlist})
 

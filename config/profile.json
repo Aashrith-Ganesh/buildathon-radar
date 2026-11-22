@@ -1,0 +1,93 @@
+{
+  "profile_name": "Indian High School Student (Class 11/12)",
+  "grade": "Class 11 / Class 12",
+  "age_group": "High School (15-18 years old, minor)",
+  "target_city": "Bengaluru",
+  "target_state": "Karnataka",
+  "target_country": "India",
+  "location_priorities": [
+    {
+      "tier": "Bengaluru, Karnataka",
+      "weight": 30,
+      "patterns": ["bengaluru", "bangalore", "karnataka", "koramangala", "indiranagar", "hstr", "whitefield"]
+    },
+    {
+      "tier": "Other India",
+      "weight": 20,
+      "patterns": ["india", "delhi", "mumbai", "hyderabad", "pune", "chennai", "gurgaon", "noida", "kolkata"]
+    },
+    {
+      "tier": "International Online",
+      "weight": 14,
+      "patterns": ["online", "virtual", "remote", "global", "worldwide"]
+    },
+    {
+      "tier": "International In-Person",
+      "weight": 5,
+      "patterns": []
+    }
+  ],
+  "event_format_weights": {
+    "in-person": 10,
+    "hybrid": 8,
+    "online": 6,
+    "unknown": 4
+  },
+  "preferred_team_size": {
+    "min": 3,
+    "max": 5,
+    "bonus": 5
+  },
+  "technology_themes": {
+    "high_relevance": {
+      "weight": 35,
+      "keywords": [
+        "artificial intelligence", "ai", "machine learning", "ml", "generative ai",
+        "genai", "agentic ai", "ai agents", "llm", "large language model",
+        "deep learning", "neural network", "rag"
+      ]
+    },
+    "medium_relevance": {
+      "weight": 25,
+      "keywords": [
+        "software engineering", "fintech", "payments", "quantum computing", "quantum",
+        "robotics", "developer tools", "devtools", "startups", "product building",
+        "open innovation", "automation", "api", "cloud", "web3", "cybersecurity"
+      ]
+    },
+    "low_relevance": {
+      "weight": 10,
+      "keywords": [
+        "general tech", "coding", "design", "hackathon", "innovation", "problem solving"
+      ]
+    }
+  },
+  "eligibility_rules": {
+    "explicit_inclusions": [
+      "class 11", "class 12", "11th grade", "12th grade", "high school", "highschool",
+      "school student", "k-12", "secondary school", "junior college", "open to all",
+      "anyone can participate", "all students", "minors welcome", "under 18",
+      "all developers", "open competition", "open innovation challenge", "external school students",
+      "no age limit", "no restriction", "everybody"
+    ],
+    "explicit_exclusions": [
+      "18+ only", "must be 18", "must be at least 18", "university students only",
+      "college students only", "enrolled undergraduate", "undergraduates only",
+      "b.tech only", "m.tech only", "working professionals only", "employees only",
+      "corporate employees only", "must be 21", "strictly 18"
+    ],
+    "allow_college_with_external_students": true
+  },
+  "scoring_weights": {
+    "theme_max": 35,
+    "geography_max": 30,
+    "host_and_signal_max": 20,
+    "format_logistics_max": 10,
+    "team_fit_bonus_max": 5
+  },
+  "tier_thresholds": {
+    "high_priority": 70,
+    "medium_priority": 45,
+    "low_priority": 25
+  }
+}

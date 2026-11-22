@@ -225,3 +225,9 @@ scheduler_log.txt
 tracker.db
 tracker.db-wal
 tracker.db-shm
+
+# Local logs and backups
+logs/
+backups/
+archive/
+*.log
