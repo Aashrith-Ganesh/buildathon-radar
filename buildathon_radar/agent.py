@@ -282,6 +282,7 @@ def run_agent(items):
 
     return {
         "picks": clean_picks,
+        "all_evaluated": result.get("all_evaluated", clean_picks),
         "skipped_count": result.get("skipped_count", 0),
         "week_note": result.get("week_note", "Curated for Class 11/12 student via rule-based filter.")
     }

@@ -323,7 +323,9 @@ def make_tracker_row(event_id, **overrides):
 
 class TestActionButtons:
     def test_card_contains_both_signed_hrefs(self, monkeypatch):
+        import buildathon_radar.digest
         monkeypatch.setenv("TRACKER_SECRET", "test-secret")
+        monkeypatch.setattr(buildathon_radar.digest, "TRACKER_BASE", "https://radar.job-joseph.com")
         item = make_item("https://a.com/1", event_id="ev-1")
         pick = make_pick(item)
         html = build_html_digest([pick], [], {"Devpost": {"count": 1, "error": None}}, "")

@@ -268,12 +268,10 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
     # Priority determination
     thresholds = profile.get("tier_thresholds", {"high_priority": 70, "medium_priority": 45, "low_priority": 25})
 
-    if eligibility == "UNKNOWN":
-        # Unclear eligibility is capped at MEDIUM PRIORITY so the user verifies it
-        priority = "MEDIUM PRIORITY"
-        tier = "worth_a_look"
-        total_score = min(total_score, 69)
-    elif total_score >= thresholds.get("high_priority", 70):
+    # Event relevance is separated from eligibility confidence:
+    # High-relevance opportunities retain their true score and high priority
+    # so that unknown eligibility does not bury exceptional events.
+    if total_score >= thresholds.get("high_priority", 70):
         priority = "HIGH PRIORITY"
         tier = "must_see"
     elif total_score >= thresholds.get("medium_priority", 45):
@@ -343,6 +341,7 @@ def filter_and_rank_events(items: List[Dict[str, Any]], max_picks: int = 15) -> 
 
     return {
         "picks": picks,
+        "all_evaluated": scored_picks,
         "skipped_count": skipped_count,
         "week_note": week_note
     }

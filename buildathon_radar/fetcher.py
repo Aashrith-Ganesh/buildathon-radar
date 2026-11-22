@@ -1137,7 +1137,14 @@ def fetch_watchlist(companies=None, stats=None):
 
 
 UNSTOP_API_URL = "https://unstop.com/api/public/opportunity/search-result"
-MLH_EVENTS_URL = "https://mlh.io/seasons/2026/events"
+def get_mlh_events_url():
+    """Computes the active MLH season URL dynamically based on academic calendar."""
+    now = datetime.now()
+    season = now.year + (1 if now.month >= 8 else 0)
+    return f"https://mlh.io/seasons/{season}/events"
+
+
+MLH_EVENTS_URL = get_mlh_events_url()
 
 
 def normalise_unstop(src):
@@ -1192,6 +1199,8 @@ def normalise_unstop(src):
         summary_parts.append("Eligibility: " + ", ".join(filters[:3]))
     summary = " | ".join(summary_parts)[:500]
 
+    eligibility = "Open to all participants" if any(f.lower() in ("all", "school students") for f in filters) else (", ".join(filters[:3]) if filters else "None specified")
+
     return {
         "source": "Unstop",
         "title": title,
@@ -1209,6 +1218,7 @@ def normalise_unstop(src):
         "registration_deadline": deadline,
         "team_size": team_size,
         "category": "Hackathon",
+        "eligibility": eligibility,
     }
 
 
@@ -1270,6 +1280,7 @@ def normalise_mlh(card_tuple):
         "registration_deadline": event_start,
         "team_size": "Up to 4 members",
         "category": "Hackathon",
+        "eligibility": "Open to high school and college students",
     }
 
 
@@ -1386,6 +1397,9 @@ def fetch_events(dry_run=False):
             existing = updates.get(event_id) or cache.get(event_id)
 
             if existing is None:
+                # Do not surface past events whose end date has passed
+                if item.get("event_end") and item.get("event_end") < today_str:
+                    continue
                 fresh.append(item)
                 ids_shown_this_run.add(event_id)
                 updates[event_id] = _new_record(event_id, url, today_str, item)

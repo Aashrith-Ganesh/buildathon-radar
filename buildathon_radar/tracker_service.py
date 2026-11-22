@@ -259,19 +259,20 @@ h2 .count {{ color:#8a9a9a; font-weight:normal; }}
 </html>"""
 
 
-def _dashboard_page(events):
+def _dashboard_page(events, current_filter=None):
     total = len(events)
     high_count = sum(1 for e in events if e["priority"] == "HIGH PRIORITY")
     med_count = sum(1 for e in events if e["priority"] == "MEDIUM PRIORITY")
     tracked_count = sum(1 for e in events if e["state"] == "tracked")
     applied_count = sum(1 for e in events if e["state"] == "applied")
     eligible_count = sum(1 for e in events if e["eligibility"] == "ELIGIBLE")
+    unverified_count = sum(1 for e in events if e["eligibility"] == "UNKNOWN")
 
     cards_html = f"""
     <div class="metrics">
       <div class="metric-card"><div class="num">{total}</div><div class="lbl">Discovered</div></div>
       <div class="metric-card highlight"><div class="num">{high_count}</div><div class="lbl">High Priority</div></div>
-      <div class="metric-card"><div class="num">{med_count}</div><div class="lbl">Needs Verification</div></div>
+      <div class="metric-card"><div class="num">{unverified_count}</div><div class="lbl">Needs Verification</div></div>
       <div class="metric-card"><div class="num">{eligible_count}</div><div class="lbl">Student Eligible</div></div>
       <div class="metric-card"><div class="num">{tracked_count}</div><div class="lbl">Shortlisted</div></div>
       <div class="metric-card"><div class="num">{applied_count}</div><div class="lbl">Applied</div></div>
@@ -316,6 +317,7 @@ def _dashboard_page(events):
           <td class="action-cell">
             <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist">&#128204; Track</a>
             <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark Applied">&#127919; Applied</a>
+            <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Reject">&#10005; Reject</a>
             <a class="btn btn-detail" href="/event/{eid}" title="Details">Details</a>
           </td>
         </tr>
@@ -362,6 +364,7 @@ td {{ padding:14px; border-bottom:1px solid #f0eeea; font-size:13px; vertical-al
 .btn {{ display:inline-block; padding:5px 9px; border-radius:4px; font-size:12px; font-weight:bold; text-decoration:none; margin-left:4px; }}
 .btn-track {{ background:{ACCENT}; color:#fff; }}
 .btn-applied {{ background:#2563eb; color:#fff; }}
+.btn-reject {{ background:#dc2626; color:#fff; }}
 .btn-detail {{ background:#f0eeea; color:#2e4243; }}
 </style>
 </head>
@@ -380,11 +383,12 @@ td {{ padding:14px; border-bottom:1px solid #f0eeea; font-size:13px; vertical-al
   {cards_html}
   <div class="controls">
     <div class="tabs">
-      <a href="/dashboard" class="active">All Opportunities ({total})</a>
-      <a href="/dashboard?filter=high">High Priority ({high_count})</a>
-      <a href="/dashboard?filter=tracked">Shortlisted ({tracked_count})</a>
-      <a href="/dashboard?filter=applied">Applied ({applied_count})</a>
-      <a href="/dashboard?filter=deadlines">Upcoming Deadlines</a>
+      <a href="/dashboard" class="{'active' if not current_filter else ''}">All Opportunities ({total})</a>
+      <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">High Priority ({high_count})</a>
+      <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">Needs Verification ({unverified_count})</a>
+      <a href="/dashboard?filter=tracked" class="{'active' if current_filter == 'tracked' else ''}">Shortlisted ({tracked_count})</a>
+      <a href="/dashboard?filter=applied" class="{'active' if current_filter == 'applied' else ''}">Applied ({applied_count})</a>
+      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">Upcoming Deadlines</a>
     </div>
   </div>
   <table>
@@ -535,6 +539,8 @@ def dashboard(filter: Optional[str] = None):
     try:
         if filter == "high":
             events = tracker_store.get_events_by_filter(conn, priority="HIGH PRIORITY")
+        elif filter == "unverified":
+            events = tracker_store.get_events_by_filter(conn, eligibility="UNKNOWN")
         elif filter == "tracked":
             events = tracker_store.get_events_by_filter(conn, state="tracked")
         elif filter == "applied":
@@ -545,7 +551,7 @@ def dashboard(filter: Optional[str] = None):
             events = tracker_store.get_all_events(conn)
     finally:
         conn.close()
-    return HTMLResponse(_dashboard_page(events), status_code=200)
+    return HTMLResponse(_dashboard_page(events, current_filter=filter), status_code=200)
 
 
 @app.get("/track")

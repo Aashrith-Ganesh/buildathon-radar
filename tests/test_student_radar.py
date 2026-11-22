@@ -49,8 +49,9 @@ class TestStudentRuleEngine:
         }
         res = rule_engine.classify_and_score_event(item)
         assert res["eligibility"] == "UNKNOWN"
-        assert res["priority"] == "MEDIUM PRIORITY"
-        assert res["score"] <= 69  # Capped at medium priority until verified
+        # Relevance score is preserved (not clamped to 69) and marked HIGH PRIORITY for visibility
+        assert res["score"] >= 70
+        assert res["priority"] == "HIGH PRIORITY"
         assert "verification" in res["why"].lower()
 
     def test_explicit_18_plus_excluded_as_ineligible(self):

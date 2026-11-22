@@ -42,6 +42,7 @@ def main():
     # deadlines
     deadlines_parser = subparsers.add_parser("deadlines", help="Show upcoming registration deadlines")
     deadlines_parser.add_argument("--limit", type=int, default=10, help="Max deadlines")
+    deadlines_parser.add_argument("--days", type=int, default=30, help="Days ahead to check")
 
     # overlaps
     subparsers.add_parser("overlaps", help="Find overlapping event dates")
@@ -58,8 +59,9 @@ def main():
     report_parser = subparsers.add_parser("report", help="Generate full opportunity report in Markdown")
     report_parser.add_argument("--output", help="Optional output markdown file path")
 
-    # verify
+    # verify / suspicious
     subparsers.add_parser("verify", help="Detect suspicious or incomplete event listings")
+    subparsers.add_parser("suspicious", help="Detect suspicious or incomplete event listings")
 
     # backup
     backup_parser = subparsers.add_parser("backup", help="Create a timestamped backup of the database")
@@ -169,7 +171,7 @@ def main():
         else:
             print(rep)
 
-    elif args.command == "verify":
+    elif args.command in ("verify", "suspicious"):
         susp = antigravity.detect_suspicious_or_incomplete()
         print(f"\nFlagged / Incomplete Listings ({len(susp)}):\n" + "=" * 70)
         for s in susp:

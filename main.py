@@ -5,7 +5,7 @@ from datetime import datetime
 # Delegate CLI subcommands if passed (e.g. `python main.py inspect`, `summary`, etc.)
 CLI_COMMANDS = {
     "inspect", "summary", "analyze", "eligibility", "deadlines",
-    "overlaps", "compare", "recommend", "report", "verify", "backup"
+    "overlaps", "compare", "recommend", "report", "verify", "suspicious", "backup"
 }
 if len(sys.argv) > 1 and sys.argv[1] in CLI_COMMANDS:
     from buildathon_radar.cli import main as cli_main
@@ -50,13 +50,17 @@ try:
         tracked_events, applied_events = [], []
         try:
             tracker_conn = tracker_store.connect()
-            # Store full event classifications into SQLite
+            # Store full event classifications for all discovered items into SQLite
+            all_picks = agent_result.get("all_evaluated") or valid_picks
             eval_map = {}
-            for p in valid_picks:
+            for p in all_picks:
                 it = p.get("item")
                 if it and it.get("event_id"):
                     eval_map[it["event_id"]] = p
-            tracker_store.upsert_events(tracker_conn, [p["item"] for p in valid_picks], eval_map)
+            items_to_store = [p["item"] for p in all_picks if p.get("item")]
+            if not items_to_store:
+                items_to_store = [p["item"] for p in valid_picks if p.get("item")]
+            tracker_store.upsert_events(tracker_conn, items_to_store, eval_map)
 
             today_str = datetime.now().strftime("%Y-%m-%d")
             tracked_events = tracker_store.get_tracked_open(tracker_conn, today_str)
