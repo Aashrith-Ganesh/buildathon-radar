@@ -1867,6 +1867,875 @@ document.addEventListener('DOMContentLoaded', () => {{
 # ---------------------------------------------------------------------------
 # DEDICATED BLACKOUT CALENDAR MANAGEMENT PAGE
 # ---------------------------------------------------------------------------
+def _detect_blackout_institution(title: str, reason: str, category: str) -> str:
+    t = (title or "").lower()
+    r = (reason or "").lower()
+    c = (category or "").lower()
+    if "allen" in r or "allen" in t or "internal test" in t or "advanced test" in t or "main test" in t:
+        return "ALLEN Career Institute (JEE Coaching)"
+    if "grade-11" in r or "grade 11" in t or "pre-board" in t or "ct" in t or "mid term" in t or "revision test" in t:
+        return "DPS Bangalore North (CBSE Grade 11)"
+    if "examination" in c or "exam" in t or "board" in t:
+        return "CBSE / School Examination Board"
+    return "Personal Schedule"
+
+
+_CALENDAR_CSS = """
+/* Hero & Summary */
+.calendar-hero {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  border-left: 5px solid var(--rose-primary);
+}
+.calendar-hero h1 { margin: 0 0 8px 0; font-size: 26px; font-weight: 800; color: #ffffff; }
+.calendar-hero p { margin: 0 0 16px 0; font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+
+.cal-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.cal-stat-card { background: var(--bg-card); border-radius: var(--radius-sm); border: 1px solid var(--border); padding: 14px; text-align: left; }
+.cal-stat-card .num { font-size: 24px; font-weight: 800; }
+.cal-stat-card .lbl { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; margin-top: 4px; }
+
+/* Visual Calendar Container */
+.cal-view-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 22px;
+  margin-bottom: 28px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+.cal-header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cal-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal-nav-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cal-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--teal-accent);
+  color: var(--teal-accent);
+}
+
+.cal-month-title {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  color: #ffffff;
+  min-width: 200px;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+.cal-quick-jumps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cal-pill-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cal-pill-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.cal-pill-btn.active {
+  background: rgba(94, 234, 212, 0.12);
+  color: var(--teal-accent);
+  border-color: rgba(94, 234, 212, 0.4);
+}
+
+.cal-today-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cal-today-btn:hover {
+  border-color: var(--teal-accent);
+  color: var(--teal-accent);
+}
+
+/* Legend */
+.cal-legend-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 0 4px;
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-exam { background: #f43f5e; box-shadow: 0 0 6px rgba(244, 63, 94, 0.6); }
+.dot-academic { background: #f59e0b; box-shadow: 0 0 6px rgba(245, 158, 11, 0.6); }
+.dot-personal { background: #a855f7; box-shadow: 0 0 6px rgba(168, 85, 247, 0.6); }
+.dot-free { background: #10b981; }
+
+/* Month Grid */
+.cal-grid-wrapper {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #090909;
+}
+
+.cal-weekdays-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid var(--border-color);
+}
+.cal-weekday-cell {
+  padding: 10px 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.cal-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: rgba(255, 255, 255, 0.04);
+  gap: 1px;
+}
+
+.cal-day-cell {
+  background: #0d0d0d;
+  min-height: 92px;
+  padding: 8px 9px;
+  position: relative;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+.cal-day-cell:hover {
+  background: #141414;
+  outline: 2px solid var(--teal-accent);
+  outline-offset: -1px;
+  z-index: 10;
+}
+.cal-day-cell.other-month {
+  background: #080808;
+  opacity: 0.35;
+}
+.cal-day-cell.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--teal-accent);
+}
+.cal-day-cell.is-today .cal-num-badge {
+  background: var(--teal-accent);
+  color: #0a0a0a;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.cal-day-cell.has-exam {
+  background: rgba(244, 63, 94, 0.08);
+}
+.cal-day-cell.has-academic {
+  background: rgba(245, 158, 11, 0.08);
+}
+.cal-day-cell.has-personal {
+  background: rgba(168, 85, 247, 0.08);
+}
+
+.cal-cell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.cal-num-badge {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ededed;
+}
+.cal-dots-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cal-event-pills {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+.cal-mini-pill {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.mini-exam {
+  background: rgba(244, 63, 94, 0.22);
+  color: #fda4af;
+  border-left: 2px solid #f43f5e;
+}
+.mini-academic {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fde68a;
+  border-left: 2px solid #f59e0b;
+}
+.mini-personal {
+  background: rgba(168, 85, 247, 0.22);
+  color: #e9d5ff;
+  border-left: 2px solid #a855f7;
+}
+
+.cal-more-tag {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-left: 4px;
+}
+
+/* Hover Tooltip Card */
+#calHoverTooltip {
+  position: fixed;
+  display: none;
+  z-index: 99999;
+  pointer-events: none;
+  width: 330px;
+  background: #121212;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 15px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #ededed;
+  font-family: var(--font-sans);
+  animation: tipFadeIn 0.12s ease-out;
+}
+@keyframes tipFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.tip-date-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tip-date-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--teal-accent);
+}
+
+.tip-items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tip-item-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 11px;
+}
+.tip-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.tip-cat-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.tip-cat-exam { background: rgba(244, 63, 94, 0.25); color: #fca5a5; }
+.tip-cat-academic { background: rgba(245, 158, 11, 0.25); color: #fef08a; }
+.tip-cat-personal { background: rgba(168, 85, 247, 0.25); color: #f3e8ff; }
+
+.tip-status-text {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.tip-status-text.active { color: #4ade80; }
+.tip-status-text.disabled { color: var(--text-dim); }
+
+.tip-event-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 5px;
+  line-height: 1.3;
+}
+
+.tip-school-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--teal-accent);
+  background: rgba(94, 234, 212, 0.08);
+  padding: 3px 8px;
+  border-radius: 5px;
+  margin-bottom: 6px;
+}
+
+.tip-detail-row {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+.tip-free-box {
+  padding: 12px 10px;
+  text-align: left;
+}
+.tip-free-header {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4ade80;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.tip-free-text {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* Modal styling */
+.modal-overlay {
+  width: min(500px, calc(100% - 24px)); max-height: calc(100% - 24px);
+  padding: 0; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-main);
+  overflow: auto;
+}
+.modal-overlay::backdrop { background: rgba(0,0,0,0.6); }
+.modal-card { padding: clamp(14px, 4vw, 28px); }
+.modal-card h3 { margin: 0 0 16px 0; font-size: 18px; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); }
+.form-input {
+  width: 100%; padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-main);
+  font-family: inherit; font-size: 13px;
+}
+.form-input:focus { outline: 2px solid var(--teal-primary); background: var(--bg-card); }
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* Table Section */
+.section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.section-title { font-size: 17px; font-weight: 800; margin: 0; color: #fff; }
+
+.switch { position: relative; display: inline-block; width: 34px; height: 18px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-subtle); transition: .2s; border-radius: 18px; }
+.slider:before { position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+input:checked + .slider { background-color: var(--emerald-primary); }
+input:checked + .slider:before { transform: translateX(16px); }
+.row-disabled { opacity: 0.5; }
+"""
+
+
+_CALENDAR_JS = """
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
+document.documentElement.setAttribute('data-theme', savedTheme);
+
+let calYear = 2026;
+let calMonth = 10; // 0-based: 10 = November
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateDisplay(iso) {
+  if (!iso) return '';
+  const parts = iso.split('-');
+  if (parts.length !== 3) return iso;
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatFullDate(iso) {
+  if (!iso) return '';
+  const parts = iso.split('-');
+  if (parts.length !== 3) return iso;
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function getMatchingBlackouts(dateStr) {
+  return window.ALL_BLACKOUTS.filter(b => dateStr >= b.start_date && dateStr <= b.end_date);
+}
+
+function renderVisualCalendar() {
+  const container = document.getElementById('calDaysGrid');
+  const titleEl = document.getElementById('calMonthTitle');
+  if (!container || !titleEl) return;
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  titleEl.textContent = `${monthNames[calMonth]} ${calYear}`;
+
+  // Update quick jump pills active state
+  document.querySelectorAll('.cal-pill-btn').forEach(pill => {
+    const pY = Number(pill.dataset.year);
+    const pM = Number(pill.dataset.month);
+    if (pY === calYear && pM === calMonth) {
+      pill.classList.add('active');
+    } else {
+      pill.classList.remove('active');
+    }
+  });
+
+  const firstDay = new Date(calYear, calMonth, 1);
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const daysInPrevMonth = new Date(calYear, calMonth, 0).getDate();
+
+  // Weekday offset (Monday as first column: Mon=0, Tue=1, ... Sun=6)
+  let startCol = (firstDay.getDay() + 6) % 7;
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  container.innerHTML = '';
+
+  // 1. Previous month days
+  for (let i = startCol - 1; i >= 0; i--) {
+    const dayNum = daysInPrevMonth - i;
+    const prevMonthIdx = calMonth === 0 ? 11 : calMonth - 1;
+    const prevYear = calMonth === 0 ? calYear - 1 : calYear;
+    const dateStr = `${prevYear}-${String(prevMonthIdx + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+    const cell = createDayCell(dayNum, dateStr, true, todayStr);
+    container.appendChild(cell);
+  }
+
+  // 2. Current month days
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const cell = createDayCell(day, dateStr, false, todayStr);
+    container.appendChild(cell);
+  }
+
+  // 3. Next month days to complete 7-day row
+  const totalCellsSoFar = startCol + daysInMonth;
+  const remainingCells = (7 - (totalCellsSoFar % 7)) % 7;
+  for (let day = 1; day <= remainingCells; day++) {
+    const nextMonthIdx = calMonth === 11 ? 0 : calMonth + 1;
+    const nextYear = calMonth === 11 ? calYear + 1 : calYear;
+    const dateStr = `${nextYear}-${String(nextMonthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const cell = createDayCell(day, dateStr, true, todayStr);
+    container.appendChild(cell);
+  }
+}
+
+function createDayCell(dayNum, dateStr, isOtherMonth, todayStr) {
+  const cell = document.createElement('div');
+  cell.className = 'cal-day-cell';
+  cell.dataset.date = dateStr;
+  if (isOtherMonth) cell.classList.add('other-month');
+  if (dateStr === todayStr) cell.classList.add('is-today');
+
+  const matching = getMatchingBlackouts(dateStr);
+  const hasExam = matching.some(b => b.category === 'Examination Period');
+  const hasAcademic = matching.some(b => b.category === 'Academic Test');
+  const hasPersonal = matching.some(b => b.category === 'Personal');
+
+  if (hasExam) cell.classList.add('has-exam');
+  else if (hasAcademic) cell.classList.add('has-academic');
+  else if (hasPersonal) cell.classList.add('has-personal');
+
+  // Header row
+  const header = document.createElement('div');
+  header.className = 'cal-cell-header';
+
+  const numBadge = document.createElement('span');
+  numBadge.className = 'cal-num-badge';
+  numBadge.textContent = dayNum;
+  header.appendChild(numBadge);
+
+  if (matching.length > 0) {
+    const dotsRow = document.createElement('div');
+    dotsRow.className = 'cal-dots-row';
+    if (hasExam) {
+      const d = document.createElement('span');
+      d.className = 'legend-dot dot-exam';
+      dotsRow.appendChild(d);
+    }
+    if (hasAcademic) {
+      const d = document.createElement('span');
+      d.className = 'legend-dot dot-academic';
+      dotsRow.appendChild(d);
+    }
+    if (hasPersonal) {
+      const d = document.createElement('span');
+      d.className = 'legend-dot dot-personal';
+      dotsRow.appendChild(d);
+    }
+    header.appendChild(dotsRow);
+  }
+  cell.appendChild(header);
+
+  // Mini event pills (up to 2)
+  if (matching.length > 0) {
+    const pillsWrap = document.createElement('div');
+    pillsWrap.className = 'cal-event-pills';
+
+    const maxShow = 2;
+    for (let i = 0; i < Math.min(matching.length, maxShow); i++) {
+      const ev = matching[i];
+      const pill = document.createElement('span');
+      pill.className = 'cal-mini-pill';
+      if (ev.category === 'Examination Period') pill.classList.add('mini-exam');
+      else if (ev.category === 'Academic Test') pill.classList.add('mini-academic');
+      else pill.classList.add('mini-personal');
+
+      // Short label
+      let label = ev.title;
+      if (label.includes('ALLEN JEE')) label = label.replace('ALLEN JEE', '').trim();
+      if (label.length > 18) label = label.slice(0, 16) + '…';
+      pill.textContent = label;
+      pillsWrap.appendChild(pill);
+    }
+
+    if (matching.length > maxShow) {
+      const more = document.createElement('span');
+      more.className = 'cal-more-tag';
+      more.textContent = `+${matching.length - maxShow} more`;
+      pillsWrap.appendChild(more);
+    }
+    cell.appendChild(pillsWrap);
+  }
+
+  // Hover Tooltip
+  cell.addEventListener('mouseenter', e => handleCellHover(e, dateStr, matching));
+  cell.addEventListener('mousemove', e => positionTooltip(e));
+  cell.addEventListener('mouseleave', hideTooltip);
+
+  // Click to add / filter
+  cell.addEventListener('click', () => {
+    document.getElementById('inputStart').value = dateStr;
+    document.getElementById('inputEnd').value = dateStr;
+    openAddModal();
+  });
+
+  return cell;
+}
+
+function handleCellHover(e, dateStr, matching) {
+  const tooltip = document.getElementById('calHoverTooltip');
+  if (!tooltip) return;
+
+  let bodyHtml = '';
+  if (matching.length > 0) {
+    bodyHtml += '<div class="tip-items-list">';
+    matching.forEach(ev => {
+      let catClass = 'tip-cat-personal';
+      if (ev.category === 'Examination Period') catClass = 'tip-cat-exam';
+      else if (ev.category === 'Academic Test') catClass = 'tip-cat-academic';
+
+      const statusHtml = ev.enabled
+        ? '<span class="tip-status-text active">● Active Conflict</span>'
+        : '<span class="tip-status-text disabled">○ Rule Disabled</span>';
+
+      const dateRange = (ev.start_date !== ev.end_date)
+        ? `<div class="tip-detail-row"><strong>Dates:</strong> ${formatDateDisplay(ev.start_date)} &rarr; ${formatDateDisplay(ev.end_date)}</div>`
+        : '';
+
+      const reasonHtml = ev.reason
+        ? `<div class="tip-detail-row"><strong>Details:</strong> ${escHtml(ev.reason)}</div>`
+        : '';
+
+      bodyHtml += `
+      <div class="tip-item-card">
+        <div class="tip-badge-row">
+          <span class="tip-cat-pill ${catClass}">${escHtml(ev.category)}</span>
+          ${statusHtml}
+        </div>
+        <div class="tip-event-name">${escHtml(ev.title)}</div>
+        <div class="tip-school-badge">
+          <span>🏛️</span>
+          <span>${escHtml(ev.institution)}</span>
+        </div>
+        ${dateRange}
+        ${reasonHtml}
+      </div>`;
+    });
+    bodyHtml += '</div>';
+  } else {
+    bodyHtml = `
+    <div class="tip-free-box">
+      <div class="tip-free-header">🟢 Free Day · Open Schedule</div>
+      <div class="tip-free-text">No exams, school tests, or blackout periods scheduled. Ideal day to attend hackathons!</div>
+    </div>`;
+  }
+
+  tooltip.innerHTML = `
+    <div class="tip-date-title">
+      <span>${formatFullDate(dateStr)}</span>
+      <span class="tip-date-badge">${matching.length ? `${matching.length} Event${matching.length > 1 ? 's' : ''}` : 'Available'}</span>
+    </div>
+    ${bodyHtml}
+  `;
+
+  positionTooltip(e);
+  tooltip.style.display = 'block';
+}
+
+function positionTooltip(e) {
+  const tooltip = document.getElementById('calHoverTooltip');
+  if (!tooltip) return;
+
+  const w = 340;
+  const h = tooltip.offsetHeight || 180;
+  let left = e.clientX + 16;
+  let top = e.clientY + 16;
+
+  if (left + w > window.innerWidth - 16) {
+    left = e.clientX - w - 16;
+  }
+  if (top + h > window.innerHeight - 16) {
+    top = e.clientY - h - 16;
+  }
+  tooltip.style.left = Math.max(10, left) + 'px';
+  tooltip.style.top = Math.max(10, top) + 'px';
+}
+
+function hideTooltip() {
+  const tooltip = document.getElementById('calHoverTooltip');
+  if (tooltip) tooltip.style.display = 'none';
+}
+
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = 'Add Blackout Date / Period';
+  document.getElementById('blackoutId').value = '';
+  document.getElementById('inputTitle').value = '';
+  if (!document.getElementById('inputStart').value) {
+    document.getElementById('inputStart').value = '';
+    document.getElementById('inputEnd').value = '';
+  }
+  document.getElementById('inputCategory').value = 'Personal';
+  document.getElementById('inputReason').value = '';
+  document.getElementById('blackoutError').textContent = '';
+  document.getElementById('blackoutModal').showModal();
+}
+
+function openEditModal(id, title, start, end, cat, reason, enabled) {
+  document.getElementById('modalTitle').textContent = 'Edit Blackout Entry';
+  document.getElementById('blackoutId').value = id;
+  document.getElementById('blackoutId').dataset.enabled = enabled;
+  document.getElementById('inputTitle').value = title;
+  document.getElementById('inputStart').value = start;
+  document.getElementById('inputEnd').value = end;
+  document.getElementById('inputCategory').value = cat;
+  document.getElementById('inputReason').value = reason;
+  document.getElementById('blackoutError').textContent = '';
+  document.getElementById('blackoutModal').showModal();
+}
+
+function closeModal() {
+  document.getElementById('blackoutModal').close();
+}
+
+async function saveBlackout(event) {
+  event.preventDefault();
+  const id = document.getElementById('blackoutId').value;
+  const payload = {
+    title: document.getElementById('inputTitle').value,
+    start_date: document.getElementById('inputStart').value,
+    end_date: document.getElementById('inputEnd').value || document.getElementById('inputStart').value,
+    category: document.getElementById('inputCategory').value,
+    reason: document.getElementById('inputReason').value,
+    enabled: !id || document.getElementById('blackoutId').dataset.enabled === '1'
+  };
+
+  const url = id ? `/api/blackouts/${id}` : '/api/blackouts';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const resp = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-Radar-Request': '1' },
+      body: JSON.stringify(payload)
+    });
+    if (resp.ok) {
+      closeModal();
+      window.location.reload();
+    } else {
+      document.getElementById('blackoutError').textContent = resp.status === 401 ? 'Unlock writes in Settings.' : 'Check the title and dates. The end must be on or after the start.';
+    }
+  } catch (e) {
+    document.getElementById('blackoutError').textContent = 'Could not reach the tracker. Try again.';
+  }
+}
+
+async function toggleBlackout(id) {
+  try {
+    const resp = await fetch(`/api/blackouts/${id}/toggle`, { method: 'POST', headers: { 'X-Radar-Request': '1' } });
+    if (resp.ok) {
+      window.location.reload();
+    }
+  } catch(e) {
+    alert('Error toggling blackout entry');
+  }
+}
+
+async function deleteBlackout(id) {
+  if (!confirm('Are you sure you want to remove this blackout entry? Event conflicts will be recomputed.')) return;
+  try {
+    const resp = await fetch(`/api/blackouts/${id}`, { method: 'DELETE', headers: { 'X-Radar-Request': '1' } });
+    if (resp.ok) {
+      window.location.reload();
+    }
+  } catch(e) {
+    alert('Error deleting blackout entry');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderVisualCalendar();
+
+  // Navigation handlers
+  const prevBtn = document.getElementById('calPrevMonth');
+  if (prevBtn) prevBtn.addEventListener('click', () => {
+    if (calMonth === 0) { calMonth = 11; calYear--; }
+    else { calMonth--; }
+    renderVisualCalendar();
+  });
+
+  const nextBtn = document.getElementById('calNextMonth');
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    if (calMonth === 11) { calMonth = 0; calYear++; }
+    else { calMonth++; }
+    renderVisualCalendar();
+  });
+
+  const todayBtn = document.getElementById('calTodayBtn');
+  if (todayBtn) todayBtn.addEventListener('click', () => {
+    const d = new Date();
+    calYear = d.getFullYear();
+    calMonth = d.getMonth();
+    renderVisualCalendar();
+  });
+
+  document.querySelectorAll('.cal-pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      calYear = Number(btn.dataset.year);
+      calMonth = Number(btn.dataset.month);
+      renderVisualCalendar();
+    });
+  });
+
+  // Modal & form handlers
+  const addBtn = document.getElementById('addBlackout');
+  if (addBtn) addBtn.addEventListener('click', openAddModal);
+
+  const cancelBtn = document.getElementById('cancelBlackout');
+  if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+  const form = document.getElementById('blackoutForm');
+  if (form) form.addEventListener('submit', saveBlackout);
+
+  document.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => {
+    const data = button.dataset;
+    openEditModal(data.edit, data.title, data.start, data.end, data.category, data.reason, data.enabled);
+  }));
+
+  document.querySelectorAll('[data-blackout-toggle]').forEach(control =>
+    control.addEventListener('change', () => toggleBlackout(control.dataset.blackoutToggle)));
+
+  document.querySelectorAll('[data-blackout-delete]').forEach(button =>
+    button.addEventListener('click', () => deleteBlackout(button.dataset.blackoutDelete)));
+});
+"""
+
+
 def _calendar_page(blackouts):
     total = len(blackouts)
     days = set()
@@ -1918,165 +2787,33 @@ def _calendar_page(blackouts):
         </tr>
         """
 
+    blackouts_json = json.dumps([
+        {
+            "id": b["id"],
+            "title": b["title"],
+            "start_date": b["start_date"],
+            "end_date": b["end_date"],
+            "category": b["category"],
+            "reason": b.get("reason") or "",
+            "enabled": bool(b["enabled"]),
+            "institution": _detect_blackout_institution(b["title"], b.get("reason") or "", b["category"])
+        }
+        for b in blackouts
+    ])
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Blackout Calendar &amp; Availability Manager - Buildathon Radar</title>
+<title>Academic Blackout Calendar - Buildathon Radar</title>
 <style>
 {_SHARED_HEAD_CSS}
-
-.calendar-hero {{
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  padding: 24px 28px;
-  margin-bottom: 24px;
-  border-left: 5px solid var(--rose-primary);
-}}
-.calendar-hero h2 {{ margin:0 0 8px 0; font-size:22px; font-weight:800; }}
-.calendar-hero p {{ margin:0 0 16px 0; font-size:14px; color:var(--text-muted); line-height:1.5; }}
-
-.cal-stats {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }}
-.cal-stat-card {{ background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:14px; text-align:left; }}
-.cal-stat-card .num {{ font-size:24px; font-weight:800; }}
-.cal-stat-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:700; margin-top:4px; }}
-
-.section-head {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }}
-.section-title {{ font-size:17px; font-weight:800; margin:0; }}
-
-/* Modal */
-.modal-overlay {{
-  width: min(500px, calc(100% - 24px)); max-height: calc(100% - 24px);
-  padding: 0; border: 1px solid var(--border);
-  border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-main);
-  overflow: auto;
-}}
-.modal-overlay::backdrop {{ background: rgba(0,0,0,0.6); }}
-.modal-card {{ padding: clamp(14px, 4vw, 28px); }}
-.modal-card h3 {{ margin: 0 0 16px 0; font-size: 18px; }}
-.form-group {{ margin-bottom: 14px; }}
-.form-group label {{ display: block; font-size: 12px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); }}
-.form-input {{
-  width: 100%; padding: 8px 10px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-main);
-  font-family: inherit; font-size: 13px;
-}}
-.form-input:focus {{ outline: 2px solid var(--teal-primary); background: var(--bg-card); }}
-.modal-actions {{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }}
-
-/* Toggle Switch */
-.switch {{ position: relative; display: inline-block; width: 34px; height: 18px; }}
-.switch input {{ opacity: 0; width: 0; height: 0; }}
-.slider {{ position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-subtle); transition: .2s; border-radius: 18px; }}
-.slider:before {{ position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }}
-input:checked + .slider {{ background-color: var(--emerald-primary); }}
-input:checked + .slider:before {{ transform: translateX(16px); }}
-.row-disabled {{ opacity: 0.5; }}
+{_CALENDAR_CSS}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
-document.documentElement.setAttribute('data-theme', savedTheme);
-
-
-function openAddModal() {{
-  document.getElementById('modalTitle').textContent = 'Add Blackout Date / Period';
-  document.getElementById('blackoutId').value = '';
-  document.getElementById('inputTitle').value = '';
-  document.getElementById('inputStart').value = '';
-  document.getElementById('inputEnd').value = '';
-  document.getElementById('inputCategory').value = 'Personal';
-  document.getElementById('inputReason').value = '';
-  document.getElementById('blackoutError').textContent = '';
-  document.getElementById('blackoutModal').showModal();
-}}
-
-function openEditModal(id, title, start, end, cat, reason, enabled) {{
-  document.getElementById('modalTitle').textContent = 'Edit Blackout Entry';
-  document.getElementById('blackoutId').value = id;
-  document.getElementById('blackoutId').dataset.enabled = enabled;
-  document.getElementById('inputTitle').value = title;
-  document.getElementById('inputStart').value = start;
-  document.getElementById('inputEnd').value = end;
-  document.getElementById('inputCategory').value = cat;
-  document.getElementById('inputReason').value = reason;
-  document.getElementById('blackoutError').textContent = '';
-  document.getElementById('blackoutModal').showModal();
-}}
-
-function closeModal() {{
-  document.getElementById('blackoutModal').close();
-}}
-
-async function saveBlackout(event) {{
-  event.preventDefault();
-  const id = document.getElementById('blackoutId').value;
-  const payload = {{
-    title: document.getElementById('inputTitle').value,
-    start_date: document.getElementById('inputStart').value,
-    end_date: document.getElementById('inputEnd').value || document.getElementById('inputStart').value,
-    category: document.getElementById('inputCategory').value,
-    reason: document.getElementById('inputReason').value,
-    enabled: !id || document.getElementById('blackoutId').dataset.enabled === '1'
-  }};
-
-  const url = id ? `/api/blackouts/${{id}}` : '/api/blackouts';
-  const method = id ? 'PUT' : 'POST';
-
-  try {{
-    const resp = await fetch(url, {{
-      method: method,
-      headers: {{ 'Content-Type': 'application/json', 'X-Radar-Request': '1' }},
-      body: JSON.stringify(payload)
-    }});
-    if (resp.ok) {{
-      closeModal();
-      window.location.reload();
-    }} else {{
-      document.getElementById('blackoutError').textContent = resp.status === 401 ? 'Unlock writes in Settings.' : 'Check the title and dates. The end must be on or after the start.';
-    }}
-  }} catch (e) {{
-    document.getElementById('blackoutError').textContent = 'Could not reach the tracker. Try again.';
-  }}
-}}
-
-async function toggleBlackout(id) {{
-  try {{
-    const resp = await fetch(`/api/blackouts/${{id}}/toggle`, {{ method: 'POST', headers: {{ 'X-Radar-Request': '1' }} }});
-    if (resp.ok) {{
-      window.location.reload();
-    }}
-  }} catch(e) {{
-    alert('Error toggling blackout entry');
-  }}
-}}
-
-async function deleteBlackout(id) {{
-  if (!confirm('Are you sure you want to remove this blackout entry? Event conflicts will be recomputed.')) return;
-  try {{
-    const resp = await fetch(`/api/blackouts/${{id}}`, {{ method: 'DELETE', headers: {{ 'X-Radar-Request': '1' }} }});
-    if (resp.ok) {{
-      window.location.reload();
-    }}
-  }} catch(e) {{
-    alert('Error deleting blackout entry');
-  }}
-}}
-document.addEventListener('DOMContentLoaded', () => {{
-  document.getElementById('addBlackout').addEventListener('click', openAddModal);
-  document.getElementById('cancelBlackout').addEventListener('click', closeModal);
-  document.getElementById('blackoutForm').addEventListener('submit', saveBlackout);
-  document.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => {{
-    const data = button.dataset;
-    openEditModal(data.edit, data.title, data.start, data.end, data.category, data.reason, data.enabled);
-  }}));
-  document.querySelectorAll('[data-blackout-toggle]').forEach(control =>
-    control.addEventListener('change', () => toggleBlackout(control.dataset.blackoutToggle)));
-  document.querySelectorAll('[data-blackout-delete]').forEach(button =>
-    button.addEventListener('click', () => deleteBlackout(button.dataset.blackoutDelete)));
-}});
+window.ALL_BLACKOUTS = {blackouts_json};
+{_CALENDAR_JS}
 </script>
 </head>
 <body>
@@ -2086,10 +2823,10 @@ document.addEventListener('DOMContentLoaded', () => {{
 <main class="container">
   <section class="calendar-hero">
     <h1>Calendar</h1>
-    <p>{total} blackout rules · {len(days)} unique enabled days</p>
+    <p>{total} blackout rules &middot; {len(days)} unique blackout days across academic and personal commitments.</p>
     <p>
-      These dates represent your hard commitments. Any hackathon or buildathon whose dates overlap even a single day of an active blackout entry is <strong>strictly excluded</strong> from your primary recommendations.
-      Eligibility is automatically recomputed across all stored events whenever you add, edit, toggle, or remove blackout dates.
+      Hover over any date on the calendar below to see scheduled examinations, school tests, JEE assessments, and blackout details with their organizing school or institution.
+      Hackathons overlapping any active date are automatically excluded from recommendations.
     </p>
     <button class="btn btn-primary-link" id="addBlackout">+ Add New Blackout Date / Period</button>
   </section>
@@ -2098,12 +2835,57 @@ document.addEventListener('DOMContentLoaded', () => {{
     <div class="cal-stat-card"><div class="num">{total}</div><div class="lbl">Total Rules</div></div>
     <div class="cal-stat-card"><div class="num" style="color:var(--emerald-primary);">{enabled_count}</div><div class="lbl">Active Rules</div></div>
     <div class="cal-stat-card"><div class="num" style="color:var(--purple-primary);">{personal_count}</div><div class="lbl">Personal Commitments</div></div>
-    <div class="cal-stat-card"><div class="num" style="color:var(--amber-primary);">{academic_count}</div><div class="lbl">ALLEN JEE Tests</div></div>
+    <div class="cal-stat-card"><div class="num" style="color:var(--amber-primary);">{academic_count}</div><div class="lbl">School &amp; JEE Tests</div></div>
     <div class="cal-stat-card"><div class="num" style="color:var(--rose-primary);">{exam_count}</div><div class="lbl">Exam Periods</div></div>
   </div>
 
+  <!-- Interactive Visual Calendar -->
+  <section class="cal-view-card" aria-label="Interactive Monthly Calendar Grid">
+    <div class="cal-header-bar">
+      <div class="cal-nav-group">
+        <button id="calPrevMonth" class="cal-nav-btn" aria-label="Previous Month">&lsaquo;</button>
+        <span id="calMonthTitle" class="cal-month-title">November 2026</span>
+        <button id="calNextMonth" class="cal-nav-btn" aria-label="Next Month">&rsaquo;</button>
+        <button id="calTodayBtn" class="cal-today-btn">Jump to Today</button>
+      </div>
+
+      <div class="cal-quick-jumps">
+        <span style="font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:700; margin-right:4px;">Quick Jump:</span>
+        <button class="cal-pill-btn active" data-year="2026" data-month="10">Nov 2026</button>
+        <button class="cal-pill-btn" data-year="2026" data-month="11">Dec 2026 (Pre-boards)</button>
+        <button class="cal-pill-btn" data-year="2027" data-month="0">Jan 2027 (Finals)</button>
+        <button class="cal-pill-btn" data-year="2027" data-month="1">Feb 2027 (Exams)</button>
+      </div>
+    </div>
+
+    <div class="cal-legend-bar">
+      <span class="legend-item"><span class="legend-dot dot-exam"></span> Examination Period</span>
+      <span class="legend-item"><span class="legend-dot dot-academic"></span> Academic Test (DPS Pre-boards / ALLEN JEE)</span>
+      <span class="legend-item"><span class="legend-dot dot-personal"></span> Personal Commitment</span>
+      <span class="legend-item"><span class="legend-dot dot-free"></span> Free Day (Open for Hackathons)</span>
+    </div>
+
+    <div class="cal-grid-wrapper">
+      <div class="cal-weekdays-row">
+        <div class="cal-weekday-cell">Mon</div>
+        <div class="cal-weekday-cell">Tue</div>
+        <div class="cal-weekday-cell">Wed</div>
+        <div class="cal-weekday-cell">Thu</div>
+        <div class="cal-weekday-cell">Fri</div>
+        <div class="cal-weekday-cell">Sat</div>
+        <div class="cal-weekday-cell">Sun</div>
+      </div>
+      <div id="calDaysGrid" class="cal-days-grid">
+        <!-- Rendered dynamically by renderVisualCalendar() -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Floating Hover Tooltip -->
+  <div id="calHoverTooltip" role="tooltip" aria-hidden="true"></div>
+
   <div class="section-head">
-    <h3 class="section-title">Configured Blackout Dates &amp; Ranges</h3>
+    <h2 class="section-title">Configured Blackout Dates &amp; Ranges</h2>
   </div>
 
   <div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable table">
