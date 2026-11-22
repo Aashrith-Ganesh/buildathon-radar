@@ -51,6 +51,11 @@ DEFAULT_PROFILE = {
         "high_priority": 70,
         "medium_priority": 45,
         "low_priority": 25
+    },
+    "availability": {
+        "blackout_dates": [
+            "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-06"
+        ]
     }
 }
 
@@ -236,6 +241,104 @@ def score_format_and_team(item: Dict[str, Any], profile: Dict[str, Any]) -> Tupl
     return format_score, team_bonus, f"Format {mode.title()}"
 
 
+def assess_cost(item: Dict[str, Any]) -> str:
+    """Detects whether an event has registration fees or is free.
+    Returns 'FREE' or 'PAID'.
+    """
+    text = " ".join([
+        str(item.get("title") or ""),
+        str(item.get("summary") or ""),
+        str(item.get("prize") or ""),
+        " ".join(item.get("themes") or [])
+    ]).lower()
+
+    paid_patterns = [
+        r"\bentry\s*fee\b", r"\bregistration\s*fee\b", r"\bticket\s*price\b",
+        r"\btickets?\s*(?:from|at|\:|\$|inr|rs|\d+)", r"\bpaid\s*event\b",
+        r"\bpaid\s*registration\b", r"\bfee\s*\:\s*(?:inr|rs|\$|[1-9]\d*)"
+    ]
+    is_paid = any(re.search(p, text) for p in paid_patterns)
+    if "free" in text and not re.search(r"\bnot\s*free\b", text):
+        if not re.search(r"\b(?:fee|ticket)\s*\:\s*(?:[1-9]\d*|inr\s*[1-9]|rs\.?\s*[1-9]|\$\s*[1-9])", text):
+            is_paid = False
+
+    return "PAID" if is_paid else "FREE"
+
+
+def assess_schedule_and_blackout(
+    item: Dict[str, Any], profile: Dict[str, Any]
+) -> Tuple[str, bool, str]:
+    """Evaluates timing (WEEKEND vs WEEKDAY) and student blackout date availability.
+
+    Returns:
+        (timing_label, is_blackout_conflict, details_explanation)
+    """
+    start_str = item.get("event_start")
+    end_str = item.get("event_end") or start_str
+    mode = (item.get("mode") or "").lower()
+
+    # Blackout dates from profile
+    avail = profile.get("availability", {})
+    blackout_strs = avail.get("blackout_dates", [
+        "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-06"
+    ])
+    blackout_dates = set()
+    from datetime import datetime as dt_cls, timedelta as td_cls
+    for b in blackout_strs:
+        try:
+            blackout_dates.add(dt_cls.strptime(b[:10], "%Y-%m-%d").date())
+        except Exception:
+            pass
+
+    if not start_str:
+        return "WEEKEND", False, "Flexible schedule"
+
+    try:
+        s_date = dt_cls.strptime(start_str[:10], "%Y-%m-%d").date()
+        e_date = dt_cls.strptime(end_str[:10], "%Y-%m-%d").date()
+
+        # Check date overlap with blackout window
+        has_blackout_overlap = False
+        cur = s_date
+        while cur <= e_date:
+            if cur in blackout_dates:
+                has_blackout_overlap = True
+                break
+            cur += td_cls(days=1)
+
+        duration_days = (e_date - s_date).days + 1
+        # In-person events during blackout dates are hard conflicts (student cannot attend)
+        # Short online hackathons (<= 4 days) during blackout dates are also direct conflicts
+        is_direct_conflict = has_blackout_overlap and (mode == "in-person" or duration_days <= 4)
+
+        # Check weekend (Saturday or Sunday)
+        is_weekend = False
+        if duration_days <= 4:
+            cur = s_date
+            while cur <= e_date:
+                if cur.weekday() in (5, 6):
+                    is_weekend = True
+                    break
+                cur += td_cls(days=1)
+        else:
+            # Multi-week online competitions span weekends
+            is_weekend = True
+
+        timing = "WEEKEND" if is_weekend else "WEEKDAY"
+
+        if is_direct_conflict:
+            explanation = "⚠️ Blackout Conflict: Student unavailable on Nov 26-30 / Dec 6"
+        elif has_blackout_overlap:
+            explanation = f"{timing.title()} (Note: spans blackout dates Nov 26-30 / Dec 6)"
+        else:
+            explanation = f"{timing.title()} schedule"
+
+        return timing, is_direct_conflict, explanation
+
+    except Exception:
+        return "WEEKDAY", False, "Standard schedule"
+
+
 def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = None) -> Dict[str, Any]:
     """Classifies and scores an event against the student profile."""
     if profile is None:
@@ -252,6 +355,10 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
             "score": 0,
             "eligibility": eligibility,
             "age_restrictions": age_restrictions,
+            "cost": "FREE",
+            "timing": "WEEKDAY",
+            "timing_tier": 5,
+            "is_conflict": False,
             "scoring": {"theme": 0, "geo": 0, "host": 0, "format": 0, "team": 0},
             "why": f"Ineligible: {elig_why}",
             "item": item
@@ -262,16 +369,46 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
     host_score, host_why = score_host_and_signal(item)
     format_score, team_score, fmt_why = score_format_and_team(item, profile)
 
-    total_score = theme_score + geo_score + host_score + format_score + team_score
+    cost = assess_cost(item)
+    timing, is_conflict, sched_why = assess_schedule_and_blackout(item, profile)
+
+    # Cost & Timing Prioritization Hierarchy:
+    # 1. Free & Weekend (Highest priority)
+    # 2. Paid & Weekend
+    # 3. Free & Weekday
+    # 4. Paid & Weekday
+    # 5. Blackout Conflict (Unavailable on 26th-30th Nov & 6th Dec)
+    if is_conflict:
+        timing_tier = 5
+        timing_tier_label = "Unavailable (Blackout Conflict)"
+        timing_bonus = -35  # Strong demotion for unavailable events
+    elif cost == "FREE" and timing == "WEEKEND":
+        timing_tier = 1
+        timing_tier_label = "Free & Weekend (Top Priority)"
+        timing_bonus = 15
+    elif cost == "PAID" and timing == "WEEKEND":
+        timing_tier = 2
+        timing_tier_label = "Paid & Weekend"
+        timing_bonus = 8
+    elif cost == "FREE" and timing == "WEEKDAY":
+        timing_tier = 3
+        timing_tier_label = "Free & Weekday"
+        timing_bonus = 4
+    else:
+        timing_tier = 4
+        timing_tier_label = "Paid & Weekday"
+        timing_bonus = 0
+
+    total_score = theme_score + geo_score + host_score + format_score + team_score + timing_bonus
     total_score = min(100, max(0, total_score))
 
     # Priority determination
     thresholds = profile.get("tier_thresholds", {"high_priority": 70, "medium_priority": 45, "low_priority": 25})
 
-    # Event relevance is separated from eligibility confidence:
-    # High-relevance opportunities retain their true score and high priority
-    # so that unknown eligibility does not bury exceptional events.
-    if total_score >= thresholds.get("high_priority", 70):
+    if is_conflict:
+        priority = "CONFLICT (UNAVAILABLE)"
+        tier = "radar"
+    elif total_score >= thresholds.get("high_priority", 70):
         priority = "HIGH PRIORITY"
         tier = "must_see"
     elif total_score >= thresholds.get("medium_priority", 45):
@@ -284,8 +421,13 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
         priority = "LOW PRIORITY"
         tier = "radar"
 
-    why_parts = [theme_why, geo_why, elig_why]
-    why = " | ".join([p for p in why_parts if p])
+    why_parts = [timing_tier_label, theme_why, geo_why, elig_why, sched_why]
+    # Deduplicate similar parts
+    unique_parts = []
+    for p in why_parts:
+        if p and p not in unique_parts:
+            unique_parts.append(p)
+    why = " | ".join(unique_parts)
 
     return {
         "url": item.get("url"),
@@ -295,12 +437,17 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
         "score": total_score,
         "eligibility": eligibility,
         "age_restrictions": age_restrictions,
+        "cost": cost,
+        "timing": timing,
+        "timing_tier": timing_tier,
+        "is_conflict": is_conflict,
         "scoring": {
             "theme": theme_score,
             "geo": geo_score,
             "host": host_score,
             "format": format_score,
-            "team": team_score
+            "team": team_score,
+            "timing_bonus": timing_bonus
         },
         "why": why,
         "item": item
@@ -308,7 +455,13 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
 
 
 def filter_and_rank_events(items: List[Dict[str, Any]], max_picks: int = 15) -> Dict[str, Any]:
-    """Filters, scores, and ranks events rule-based without any external paid LLM."""
+    """Filters, scores, and ranks events rule-based without any external paid LLM.
+    Strictly orders by:
+    1. Available before Blackout Conflict
+    2. Free & Weekend (Rank 1) -> Paid & Weekend (Rank 2) -> Free & Weekday (Rank 3) -> Paid & Weekday (Rank 4)
+    3. Relevance score descending
+    4. Student eligibility confidence
+    """
     profile = load_profile()
     scored_picks = []
     skipped_count = 0
@@ -320,11 +473,12 @@ def filter_and_rank_events(items: List[Dict[str, Any]], max_picks: int = 15) -> 
             continue
         scored_picks.append(evaluated)
 
-    # Sort descending by score, tie-breaking on in-person Bengaluru and eligibility
     def sort_key(p):
-        is_high = 1 if p["priority"] == "HIGH PRIORITY" else 0
-        is_elig = 1 if p["eligibility"] == "ELIGIBLE" else 0
-        return (is_high, is_elig, p["score"])
+        is_avail = 0 if p.get("is_conflict") else 1
+        tier_rank = p.get("timing_tier", 3)
+        score = p.get("score", 0)
+        is_elig = 1 if p.get("eligibility") == "ELIGIBLE" else 0
+        return (is_avail, -tier_rank, score, is_elig)
 
     scored_picks.sort(key=sort_key, reverse=True)
 
@@ -335,8 +489,8 @@ def filter_and_rank_events(items: List[Dict[str, Any]], max_picks: int = 15) -> 
     med_count = sum(1 for p in picks if p["priority"] == "MEDIUM PRIORITY")
 
     week_note = (
-        f"Curated {len(picks)} opportunities for Class 11/12 student: "
-        f"{high_count} high-priority, {med_count} requiring eligibility verification."
+        f"Curated {len(picks)} opportunities: Free & Weekend events prioritized; "
+        f"Nov 26-30 & Dec 6 blackout dates avoided."
     )
 
     return {

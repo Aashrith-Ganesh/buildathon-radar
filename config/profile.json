@@ -85,6 +85,20 @@
     "format_logistics_max": 10,
     "team_fit_bonus_max": 5
   },
+  "availability": {
+    "blackout_dates": [
+      "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-06"
+    ],
+    "description": "Student is unavailable on 26th-30th Nov 2026 and 6th Dec 2026"
+  },
+  "cost_and_timing_preferences": {
+    "priority_hierarchy": [
+      {"tier": 1, "cost": "free", "timing": "weekend", "bonus": 15, "label": "Free & Weekend (Top Priority)"},
+      {"tier": 2, "cost": "paid", "timing": "weekend", "bonus": 8, "label": "Paid & Weekend"},
+      {"tier": 3, "cost": "free", "timing": "weekday", "bonus": 4, "label": "Free & Weekday"},
+      {"tier": 4, "cost": "paid", "timing": "weekday", "bonus": 0, "label": "Paid & Weekday"}
+    ]
+  },
   "tier_thresholds": {
     "high_priority": 70,
     "medium_priority": 45,

@@ -101,6 +101,93 @@ class TestStudentRuleEngine:
         assert res["score"] >= 70
         assert res["scoring"]["geo"] == 14  # Online score
 
+    def test_cost_and_timing_priorities(self):
+        # 1. Free + Weekend (Highest)
+        free_weekend = {
+            "title": "Weekend Free Hack",
+            "url": "https://devpost.com/free-weekend",
+            "summary": "100% free to attend AI hackathon on weekend.",
+            "mode": "in-person",
+            "event_start": "2026-12-05",  # Saturday
+            "event_end": "2026-12-05",    # Saturday
+            "location": "Bengaluru",
+            "themes": ["AI"],
+        }
+        res1 = rule_engine.classify_and_score_event(free_weekend)
+        assert res1["cost"] == "FREE"
+        assert res1["timing"] == "WEEKEND"
+        assert res1["timing_tier"] == 1
+
+        # 2. Paid + Weekend
+        paid_weekend = {
+            "title": "Weekend Paid Hack",
+            "url": "https://devpost.com/paid-weekend",
+            "summary": "Entry fee: INR 500 per team. Exclusive weekend workshop.",
+            "mode": "in-person",
+            "event_start": "2026-12-05",  # Saturday
+            "event_end": "2026-12-05",
+            "location": "Bengaluru",
+            "themes": ["AI"],
+        }
+        res2 = rule_engine.classify_and_score_event(paid_weekend)
+        assert res2["cost"] == "PAID"
+        assert res2["timing"] == "WEEKEND"
+        assert res2["timing_tier"] == 2
+
+        # 3. Free + Weekday
+        free_weekday = {
+            "title": "Weekday Free Hack",
+            "url": "https://devpost.com/free-weekday",
+            "summary": "Free community meetup on Wednesday evening.",
+            "mode": "in-person",
+            "event_start": "2026-12-02",  # Wednesday
+            "event_end": "2026-12-02",
+            "location": "Bengaluru",
+            "themes": ["AI"],
+        }
+        res3 = rule_engine.classify_and_score_event(free_weekday)
+        assert res3["cost"] == "FREE"
+        assert res3["timing"] == "WEEKDAY"
+        assert res3["timing_tier"] == 3
+
+        # 4. Paid + Weekday
+        paid_weekday = {
+            "title": "Weekday Paid Hack",
+            "url": "https://devpost.com/paid-weekday",
+            "summary": "Registration fee: $20. Wednesday conference.",
+            "mode": "in-person",
+            "event_start": "2026-12-02",  # Wednesday
+            "event_end": "2026-12-02",
+            "location": "Bengaluru",
+            "themes": ["AI"],
+        }
+        res4 = rule_engine.classify_and_score_event(paid_weekday)
+        assert res4["cost"] == "PAID"
+        assert res4["timing"] == "WEEKDAY"
+        assert res4["timing_tier"] == 4
+
+        # Verify ranking order: Tier 1 > Tier 2 > Tier 3 > Tier 4
+        ranked = rule_engine.filter_and_rank_events([paid_weekday, free_weekday, paid_weekend, free_weekend])
+        titles = [p["title"] for p in ranked["picks"]]
+        assert titles == ["Weekend Free Hack", "Weekend Paid Hack", "Weekday Free Hack", "Weekday Paid Hack"]
+
+    def test_blackout_dates_conflict_deprioritization(self):
+        # In-person event overlapping with Nov 26-30 blackout window
+        conflict_event = {
+            "title": "Bengaluru AI Fest on Blackout Date",
+            "url": "https://devpost.com/conflict-event",
+            "summary": "Massive AI sprint on Nov 28.",
+            "mode": "in-person",
+            "event_start": "2026-11-28",  # Blackout date
+            "event_end": "2026-11-28",
+            "location": "Bengaluru",
+            "themes": ["AI"],
+        }
+        res = rule_engine.classify_and_score_event(conflict_event)
+        assert res["is_conflict"] is True
+        assert res["priority"] == "CONFLICT (UNAVAILABLE)"
+        assert "Blackout Conflict" in res["why"]
+
 
 class TestDeduplicationAndURLNormalization:
     def test_url_normalization_strips_utm_and_trailing_slash(self):
