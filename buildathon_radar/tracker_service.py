@@ -1,39 +1,63 @@
-import html as html_lib
-import os
-from datetime import datetime
-from typing import Optional
+from __future__ import annotations
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+import html
+import json
+import os
+import re
+from datetime import datetime as _datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
 from buildathon_radar import tracker_store
+from buildathon_radar.discovery.engine import DiscoveryEngine
 
-load_dotenv()
+app = FastAPI(title="Buildathon Radar Tracker & Blackout Manager")
+DB_PATH = "tracker.db"
 
-# Secure fallback for TRACKER_SECRET so local development does not crash
-if not os.getenv("TRACKER_SECRET"):
-    tracker_store.get_secret()
-
-DB_PATH = tracker_store.DB_FILE
-TRACKER_BASE_URL = os.getenv("TRACKER_BASE_URL", "http://127.0.0.1:8015").rstrip("/")
-
-FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-TEAL_DARK = "#0f4c4c"
-PAGE_BG = "#f6f4ef"
-CARD_BG = "#ffffff"
 ACCENT = "#0d9488"
+TEAL_DARK = "#042f2e"
+PAGE_BG = "#f8fafc"
+CARD_BG = "#ffffff"
+FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif'
 
-STATE_ORDER = ["tracked", "applied", "seen", "rejected", "over"]
+STATE_ORDER = ("tracked", "applied", "seen")
 STATE_LABELS = {
     "tracked": "Tracked",
     "applied": "Applied",
     "seen": "Seen",
-    "rejected": "Rejected",
-    "over": "Over",
 }
 
-app = FastAPI(title="Buildathon Radar Tracker")
+
+class BlackoutCreate(BaseModel):
+    title: str
+    start_date: str
+    end_date: str
+    category: str
+    reason: Optional[str] = ""
+    enabled: Optional[bool] = True
+
+
+class BlackoutUpdate(BaseModel):
+    title: str
+    start_date: str
+    end_date: str
+    category: str
+    reason: Optional[str] = ""
+    enabled: Optional[bool] = True
+
+
+class ActionRequest(BaseModel):
+    event_id: str
+    action: str
+    token: Optional[str] = None
+
+
+class ScanRequest(BaseModel):
+    sources: Optional[List[str]] = None
+    force_all: Optional[bool] = False
 
 
 def _get_conn():
@@ -41,67 +65,86 @@ def _get_conn():
 
 
 def _esc(value):
-    return html_lib.escape(str(value or ""))
+    if value is None:
+        return ""
+    return html.escape(str(value))
 
 
 def _format_date(value):
     if not value:
-        return None
+        return ""
     try:
-        return datetime.strptime(value, "%Y-%m-%d").strftime("%b %d, %Y")
-    except ValueError:
+        dt = _datetime.strptime(value[:10], "%Y-%m-%d")
+        return dt.strftime("%b %d, %Y")
+    except Exception:
         return value
 
 
 def _format_ts_date(iso_ts):
     if not iso_ts:
-        return "an earlier visit"
+        return "recently"
     try:
-        return datetime.fromisoformat(iso_ts).strftime("%b %d, %Y")
-    except ValueError:
-        return "an earlier visit"
+        cleaned = iso_ts.split(".")[0]
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                dt = _datetime.strptime(cleaned, fmt)
+                return dt.strftime("%b %d, %Y")
+            except ValueError:
+                continue
+        return iso_ts[:10]
+    except Exception:
+        return "recently"
 
 
 def _page(headline, lines, event_url=None, accent=ACCENT):
-    body_lines = "".join(f'<p style="margin:0 0 10px 0;">{line}</p>' for line in lines)
+    paras = "".join(f"<p>{line}</p>" for line in lines)
     link_html = ""
     if event_url:
-        link_html = (
-            f'<p style="margin:18px 0 0 0;">'
-            f'<a href="{_esc(event_url)}" style="color:{accent}; font-weight:bold; '
-            f'text-decoration:none;">Open event page &rarr;</a></p>'
-        )
+        link_html = f'<p class="link-p"><a href="{_esc(event_url)}" class="event-link" target="_blank" rel="noopener">Open event &rarr;</a></p>'
+
     return f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buildathon Radar</title>
+<title>{_esc(headline)} - Buildathon Radar</title>
+<style>
+:root {{
+  --bg-canvas: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --accent: #0d9488;
+}}
+[data-theme="dark"] {{
+  --bg-canvas: #090d16;
+  --bg-card: #131b2e;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border: #1e293b;
+  --accent: #14b8a6;
+}}
+* {{ box-sizing: border-box; }}
+body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:{FONT_STACK}; color:var(--text-main); display:flex; justify-content:center; align-items:center; min-height:100vh; }}
+.card {{ background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:36px; max-width:540px; width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.06); text-align:center; }}
+h1 {{ font-size:20px; font-weight:700; margin-top:0; margin-bottom:14px; color:var(--text-main); }}
+p {{ font-size:14px; color:var(--text-muted); line-height:1.6; margin:8px 0; }}
+.event-link {{ display:inline-block; margin-top:12px; padding:8px 16px; background:var(--accent); color:#ffffff; text-decoration:none; border-radius:6px; font-weight:600; font-size:13px; }}
+.back-link {{ display:inline-block; margin-top:16px; color:var(--accent); font-size:13px; text-decoration:none; font-weight:600; }}
+</style>
+<script>
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.setAttribute('data-theme', savedTheme);
+</script>
 </head>
-<body style="margin:0; padding:0; background-color:{PAGE_BG}; font-family:{FONT_STACK};">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{PAGE_BG};">
-<tr>
-<td align="center" style="background-color:{PAGE_BG}; padding:40px 16px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:480px; background-color:{CARD_BG}; border-radius:6px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.06);">
-<tr>
-<td style="background-color:{accent}; padding:20px 24px;">
-<div style="font-family:{FONT_STACK}; font-size:13px; font-weight:bold; color:#ffffff; letter-spacing:0.5px;">BUILDATHON RADAR</div>
-</td>
-</tr>
-<tr>
-<td style="background-color:{CARD_BG}; padding:24px; font-family:{FONT_STACK}; color:#2e4243;">
-<div style="font-size:20px; font-weight:bold; color:{TEAL_DARK}; margin-bottom:12px; word-break:break-word; overflow-wrap:break-word;">{_esc(headline)}</div>
-<div style="font-size:14px; line-height:1.5; word-break:break-word; overflow-wrap:break-word;">{body_lines}</div>
-{link_html}
-<div style="margin-top:24px; border-top:1px solid #e2ece9; padding-top:12px;">
-<a href="/dashboard" style="color:{ACCENT}; font-size:13px; text-decoration:none;">&larr; Return to Dashboard</a>
+<body>
+<div class="card">
+  <h1>{_esc(headline)}</h1>
+  {paras}
+  {link_html}
+  <div><a class="back-link" href="/dashboard">&larr; Return to Dashboard</a></div>
 </div>
-</td>
-</tr>
-</table>
-</td>
-</tr>
-</table>
 </body>
 </html>"""
 
@@ -109,7 +152,7 @@ def _page(headline, lines, event_url=None, accent=ACCENT):
 def _health_page():
     return _page("Buildathon Radar tracker is running.", [
         "This is a liveness check only. No event data is exposed here.",
-        "<br>Access the interactive local dashboard at: <a href='/dashboard' style='color:#0d9488; font-weight:bold;'>Local Dashboard</a> | <a href='/list' style='color:#0d9488;'>Read-only List</a>"
+        "<br>Access the interactive local dashboard at: <a href='/dashboard' style='color:#0d9488; font-weight:bold;'>Local Dashboard</a> | <a href='/list' style='color:#0d9488;'>Read-only List</a>",
     ])
 
 
@@ -259,159 +302,595 @@ h2 .count {{ color:#8a9a9a; font-weight:normal; }}
 </html>"""
 
 
+# ---------------------------------------------------------------------------
+# SHARED MODERN CSS FOR DASHBOARD & CALENDAR
+# ---------------------------------------------------------------------------
+_SHARED_HEAD_CSS = f"""
+:root {{
+  /* Core surfaces - Light Mode (Clean Slate & Zinc) */
+  --bg-canvas: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-hover: #f8fafc;
+  --bg-header: #042f2e;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-dim: #94a3b8;
+  --border: #e2e8f0;
+  --border-subtle: #cbd5e1;
+
+  /* Primary Brand - Emerald / Teal Precision */
+  --teal-primary: #059669;
+  --teal-hover: #047857;
+  --teal-light: #ecfdf5;
+
+  /* Accent states & Semantic highlights */
+  --indigo-primary: #4f46e5;
+  --indigo-light: #eef2ff;
+  --emerald-primary: #059669;
+  --emerald-light: #ecfdf5;
+  --rose-primary: #e11d48;
+  --rose-light: #fff1f2;
+  --amber-primary: #d97706;
+  --amber-light: #fffbeb;
+  --purple-primary: #7c3aed;
+  --purple-light: #f5f3ff;
+
+  /* Elevation & Geometry */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}}
+
+[data-theme="dark"] {{
+  --bg-canvas: #090d16;
+  --bg-card: #111827;
+  --bg-subtle: #1e293b;
+  --bg-hover: #172033;
+  --bg-header: #051419;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --border: #1e293b;
+  --border-subtle: #334155;
+
+  --teal-primary: #10b981;
+  --teal-hover: #34d399;
+  --teal-light: rgba(16, 185, 129, 0.12);
+
+  --indigo-primary: #818cf8;
+  --indigo-light: rgba(99, 102, 241, 0.15);
+  --emerald-primary: #34d399;
+  --emerald-light: rgba(16, 185, 129, 0.15);
+  --rose-primary: #fb7185;
+  --rose-light: rgba(244, 63, 94, 0.15);
+  --amber-primary: #fbbf24;
+  --amber-light: rgba(245, 158, 11, 0.15);
+  --purple-primary: #a78bfa;
+  --purple-light: rgba(139, 92, 246, 0.15);
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+}}
+
+* {{ box-sizing: border-box; }}
+html, body {{
+  overflow-x: clip;
+}}
+body {{
+  margin: 0;
+  padding: 0;
+  background: var(--bg-canvas);
+  font-family: var(--font-stack);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}}
+
+/* Accessibility: Skip Link & Focus */
+.skip-link {{
+  position: absolute;
+  top: -40px;
+  left: 16px;
+  background: var(--teal-primary);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  text-decoration: none;
+  z-index: 1000;
+  transition: top 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}}
+.skip-link:focus {{ top: 16px; }}
+:focus-visible {{
+  outline: 2px solid var(--teal-primary);
+  outline-offset: 2px;
+}}
+
+/* App Header - Frosted Glass & Polished Nav */
+header.app-header {{
+  background: rgba(4, 47, 46, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  padding: 14px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}}
+[data-theme="dark"] header.app-header {{
+  background: rgba(5, 20, 25, 0.92);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}}
+.brand-group {{ display: flex; align-items: center; gap: 14px; }}
+.brand-title {{
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin: 0;
+  color: #ffffff;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}}
+.brand-badge {{
+  font-size: 11px;
+  background: rgba(16, 185, 129, 0.2);
+  color: #a7f3d0;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}}
+.brand-badge::before {{
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: #10b981;
+  border-radius: 50%;
+  display: inline-block;
+  animation: pulse 2s infinite;
+}}
+@keyframes pulse {{
+  0% {{ opacity: 1; transform: scale(1); }}
+  50% {{ opacity: 0.4; transform: scale(0.85); }}
+  100% {{ opacity: 1; transform: scale(1); }}
+}}
+.brand-sub {{
+  font-size: 12px;
+  color: #99f6e4;
+  margin-top: 2px;
+  letter-spacing: -0.01em;
+}}
+
+.nav-toolbar {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+.nav-btn {{
+  color: #ccfbf1;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}}
+.nav-btn:hover {{ color: #ffffff; background: rgba(255, 255, 255, 0.12); }}
+.nav-btn.active {{
+  background: var(--teal-primary);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}}
+
+.theme-toggle-btn {{
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-weight: 600;
+  min-height: 36px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}}
+.theme-toggle-btn:hover {{ background: rgba(255, 255, 255, 0.18); }}
+
+.container {{
+  max-width: 1440px;
+  width: 100%;
+  margin: 24px auto;
+  padding: 0 24px;
+  flex: 1;
+}}
+"""
+
+
 def _dashboard_page(events, current_filter=None):
-    def _val(row, k, default=""):
-        try:
-            v = row[k]
-            return default if v is None else v
-        except Exception:
-            return default
+    today = _datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d")
+    conn = _get_conn()
+    try:
+        stats = tracker_store.get_dashboard_stats(conn)
+    finally:
+        conn.close()
 
-    total = len(events)
-    high_count = sum(1 for e in events if "HIGH" in str(_val(e, "priority")))
-    free_weekend_count = sum(1 for e in events if "Free & Weekend" in str(_val(e, "why")))
-    tracked_count = sum(1 for e in events if _val(e, "state") == "tracked")
-    applied_count = sum(1 for e in events if _val(e, "state") == "applied")
-    eligible_count = sum(1 for e in events if _val(e, "eligibility") == "ELIGIBLE")
-    unverified_count = sum(1 for e in events if _val(e, "eligibility") == "UNKNOWN")
-    bengaluru_count = sum(
-        1 for e in events
-        if str(_val(e, "mode")).lower() in ("in-person", "hybrid", "offline")
-        and any(p in str(_val(e, "location")).lower() or p in str(_val(e, "summary")).lower() or p in str(_val(e, "title")).lower() for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr"])
-    )
+    total_upcoming = stats["total_upcoming"]
+    eligible_count = stats["eligible_count"]
+    blackout_excluded = stats["blackout_excluded_count"]
+    unverified_count = stats["unverified_count"]
+    bangalore_count = stats["bangalore_count"]
+    closing_soon_count = stats["closing_soon_count"]
+    tracked_count = stats["tracked_count"]
+    applied_count = stats["applied_count"]
+    next_event = stats["next_eligible_event"]
 
-    cards_html = f"""
-    <section class="metrics" role="region" aria-label="Summary metrics">
-      <a href="/dashboard" class="metric-card" title="View all active opportunities">
-        <div class="num">{total}</div>
-        <div class="lbl">Active Opportunities</div>
+    # Spotlight Hero: Next Eligible High-School Hackathon in Bengaluru
+    next_event_html = ""
+    if next_event:
+        ne_id = _esc(next_event["event_id"])
+        ne_title = _esc(next_event["title"])
+        ne_url = _esc(next_event["url"])
+        ne_host = _esc(next_event["host"] or "Community")
+        ne_loc = _esc(next_event["location"] or "Online")
+        ne_mode = _esc(next_event["mode"] or "unknown")
+        ne_start_raw = next_event["event_start"] or ""
+        ne_start = _esc(_format_date(ne_start_raw))
+        ne_prize = _esc(next_event["prize"] or "Unspecified")
+        ne_team = _esc(next_event["team_size"] or "3-5 members")
+        ne_score = int(next_event["score"]) if next_event["score"] is not None else 0
+        ne_token = tracker_store.sign_action("track", next_event["event_id"])
+
+        # Relative days computation for Spotlight
+        relative_days_text = ""
+        if ne_start_raw:
+            try:
+                d_start = _datetime.strptime(ne_start_raw[:10], "%Y-%m-%d")
+                d_today = _datetime.strptime(today, "%Y-%m-%d")
+                delta_days = (d_start - d_today).days
+                if delta_days == 0:
+                    relative_days_text = '<span class="spotlight-days-pill">Starts Today!</span>'
+                elif delta_days == 1:
+                    relative_days_text = '<span class="spotlight-days-pill">Starts Tomorrow</span>'
+                elif 2 <= delta_days <= 14:
+                    relative_days_text = f'<span class="spotlight-days-pill">Starts in {delta_days} days</span>'
+            except Exception:
+                pass
+
+        next_event_html = f"""
+        <section class="spotlight-hero" aria-label="Next Eligible Opportunity">
+          <div class="spotlight-header">
+            <div class="spotlight-tag-row">
+              <span class="spotlight-tag">🚀 Next Eligible Hackathon</span>
+              {relative_days_text}
+              <span class="spotlight-subtag">Zero Blackout Conflicts &middot; Class 11/12 Eligible</span>
+            </div>
+            <div class="spotlight-score" title="Algorithm recommendation score out of 100">
+              Match score: <strong>{ne_score}/100</strong>
+            </div>
+          </div>
+          <div class="spotlight-body">
+            <div class="spotlight-info">
+              <h2 class="spotlight-title"><a href="{ne_url}" target="_blank" rel="noopener">{ne_title}</a></h2>
+              <div class="spotlight-meta">
+                <span class="meta-item">🏢 {ne_host}</span>
+                <span class="meta-divider">&middot;</span>
+                <span class="meta-item">📍 {ne_loc} ({ne_mode.title()})</span>
+                <span class="meta-divider">&middot;</span>
+                <span class="meta-item">📅 Starts: <strong>{ne_start}</strong></span>
+                <span class="meta-divider">&middot;</span>
+                <span class="meta-item">👥 Team: {ne_team}</span>
+                <span class="meta-divider">&middot;</span>
+                <span class="meta-item">🏆 Prize: {ne_prize}</span>
+              </div>
+              <p class="spotlight-why">{_esc(next_event['why'] or '')}</p>
+            </div>
+            <div class="spotlight-actions">
+              <a class="btn btn-track" href="/track?event_id={ne_id}&t={ne_token}" onclick="handleAjaxAction(event, '{ne_id}', 'track', '{ne_token}')">📌 Shortlist Opportunity</a>
+              <a class="btn btn-primary-link" href="{ne_url}" target="_blank" rel="noopener">Open Official Page &rarr;</a>
+              <button class="btn btn-outline" onclick="copyEventLink('{ne_url}')" title="Copy official URL to clipboard">🔗 Share</button>
+            </div>
+          </div>
+        </section>
+        """
+
+    # Metrics Summary Row with Tabular Figures
+    metrics_html = f"""
+    <section class="metrics" role="region" aria-label="Platform Summary Metrics">
+      <a href="/dashboard" class="metric-card {'active-metric' if not current_filter else ''}" title="View all upcoming events">
+        <div class="metric-top">
+          <span class="metric-icon">🌐</span>
+          <span class="metric-trend">All active</span>
+        </div>
+        <div class="num">{total_upcoming}</div>
+        <div class="lbl">Total upcoming</div>
       </a>
-      <a href="/dashboard?filter=free_weekend" class="metric-card highlight-indigo" title="View free weekend opportunities">
-        <div class="num">{free_weekend_count}</div>
-        <div class="lbl">⚡ Free & Weekend</div>
+      <a href="/dashboard?filter=eligible" class="metric-card highlight-emerald {'active-metric' if current_filter == 'eligible' else ''}" title="View student-eligible events with zero blackout conflicts">
+        <div class="metric-top">
+          <span class="metric-icon">✓</span>
+          <span class="metric-trend trend-green">Conflict-free</span>
+        </div>
+        <div class="num">{eligible_count}</div>
+        <div class="lbl">Eligible &amp; available</div>
       </a>
-      <a href="/dashboard?filter=high" class="metric-card highlight-teal" title="View high priority opportunities">
-        <div class="num">{high_count}</div>
-        <div class="lbl">🔥 High Priority</div>
+      <a href="/dashboard?filter=bengaluru" class="metric-card highlight-teal {'active-metric' if current_filter == 'bengaluru' else ''}" title="View Bangalore in-person and hybrid events">
+        <div class="metric-top">
+          <span class="metric-icon">📍</span>
+          <span class="metric-trend trend-teal">Top priority</span>
+        </div>
+        <div class="num">{bangalore_count}</div>
+        <div class="lbl">Bengaluru in-person</div>
       </a>
-      <a href="/dashboard?filter=unverified" class="metric-card" title="View opportunities needing verification">
-        <div class="num">{unverified_count}</div>
-        <div class="lbl">⚠️ Needs Verification</div>
+      <a href="/dashboard?filter=closing_soon" class="metric-card highlight-amber {'active-metric' if current_filter == 'closing_soon' else ''}" title="View registration closing soon">
+        <div class="metric-top">
+          <span class="metric-icon">⏳</span>
+          <span class="metric-trend trend-amber">&le; 7 days</span>
+        </div>
+        <div class="num">{closing_soon_count}</div>
+        <div class="lbl">Closing soon</div>
       </a>
-      <a href="/dashboard?filter=tracked" class="metric-card highlight-emerald" title="View shortlisted opportunities">
+      <a href="/dashboard?filter=tracked" class="metric-card highlight-indigo {'active-metric' if current_filter == 'tracked' else ''}" title="View saved / shortlisted opportunities">
+        <div class="metric-top">
+          <span class="metric-icon">📌</span>
+          <span class="metric-trend trend-indigo">Your list</span>
+        </div>
         <div class="num">{tracked_count}</div>
-        <div class="lbl">📌 Shortlisted</div>
+        <div class="lbl">Shortlisted / saved</div>
       </a>
-      <a href="/dashboard?filter=applied" class="metric-card highlight-blue" title="View applied opportunities">
-        <div class="num">{applied_count}</div>
-        <div class="lbl">🎯 Applied</div>
+      <a href="/dashboard?filter=excluded" class="metric-card highlight-rose {'active-metric' if current_filter == 'excluded' else ''}" title="View events excluded due to blackout conflicts">
+        <div class="metric-top">
+          <span class="metric-icon">⛔</span>
+          <span class="metric-trend trend-rose">Blackout</span>
+        </div>
+        <div class="num">{blackout_excluded}</div>
+        <div class="lbl">Blackout excluded</div>
       </a>
     </section>
     """
 
+    # Generate Event Cards & Table Rows
+    cards_html = ""
     rows_html = ""
+
     for e in events:
         eid = _esc(e["event_id"])
         title = _esc(e["title"])
         host = _esc(e["host"] or "Community")
+        source = _esc(e["source"] or "Discovery")
         loc = _esc(e["location"] or "Online")
         mode = _esc(e["mode"] or "unknown")
-        start = _esc(_format_date(e["event_start"]) or "TBD")
-        deadline = _esc(_format_date(e["registration_deadline"]) or "Open")
+        category = _esc(e["category"] or "Hackathon")
+        start_raw = e["event_start"] or ""
+        end_raw = e["event_end"] or start_raw
+        start = _esc(_format_date(start_raw) or "TBD")
+        end = _esc(_format_date(end_raw) or "TBD")
+        deadline_raw = e["registration_deadline"] or ""
+        deadline = _esc(_format_date(deadline_raw) or "Open")
+        team = _esc(e["team_size"] or "3-5 members")
+        prize = _esc(e["prize"] or "Unspecified")
         score = int(e["score"]) if e["score"] is not None else 0
         priority = _esc(e["priority"])
-        eligibility = _esc(e["eligibility"])
+        eligibility = _esc(e["eligibility"] or "UNKNOWN")
         why = _esc(e["why"] or "")
         state = _esc(e["state"])
         url = _esc(e["url"])
+        is_conflict = bool(e["blackout_conflict"] if "blackout_conflict" in e.keys() else ("CONFLICT" in priority))
+        date_status = str(e["date_status"] if "date_status" in e.keys() else "verified")
 
-        # Cost & Timing Badge
-        sched_badge = ""
-        if "Free & Weekend" in why:
-            sched_badge = '<span class="sched-pill sched-fw" title="Free admission & Weekend timing">⚡ Free &amp; Weekend</span>'
-        elif "Paid & Weekend" in why:
-            sched_badge = '<span class="sched-pill sched-pw" title="Paid admission & Weekend timing">Paid &amp; Weekend</span>'
-        elif "Free & Weekday" in why:
-            sched_badge = '<span class="sched-pill sched-fwd" title="Free admission & Weekday timing">Free &amp; Weekday</span>'
-        elif "Paid & Weekday" in why:
-            sched_badge = '<span class="sched-pill sched-pwd" title="Paid admission & Weekday timing">Paid &amp; Weekday</span>'
-        elif "Unavailable" in why or "Blackout" in why:
-            sched_badge = '<span class="sched-pill sched-conflict" title="Conflicts with student blackout dates">⚠️ Blackout Conflict</span>'
+        # Duration computation
+        duration_str = "1 day"
+        try:
+            if start_raw and end_raw:
+                d1 = _datetime.strptime(start_raw[:10], "%Y-%m-%d")
+                d2 = _datetime.strptime(end_raw[:10], "%Y-%m-%d")
+                days = (d2 - d1).days + 1
+                duration_str = f"{days} days" if days > 1 else "1 day"
+        except Exception:
+            pass
 
-        # Priority styling
-        if "CONFLICT" in priority or "UNAVAILABLE" in priority:
+        # Bangalore Indicator
+        is_bangalore = any(
+            p in loc.lower() or p in title.lower() or p in why.lower()
+            for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr", "electronic city", "hebbal"]
+        )
+
+        # Deadline status
+        is_closed = False
+        is_closing_soon = False
+        days_left_text = ""
+        if deadline_raw:
+            if deadline_raw[:10] < today:
+                is_closed = True
+            else:
+                try:
+                    d_dt = _datetime.strptime(deadline_raw[:10], "%Y-%m-%d")
+                    t_dt = _datetime.strptime(today, "%Y-%m-%d")
+                    diff = (d_dt - t_dt).days
+                    if 0 <= diff <= 7:
+                        is_closing_soon = True
+                        days_left_text = f" ({diff}d left)" if diff > 0 else " (Closes today!)"
+                except Exception:
+                    pass
+
+        # Priority & Status Pills (Shadcn aesthetic)
+        if is_conflict:
             p_class = "p-conflict"
-            p_icon = "⚠️ "
+            p_badge = '<span class="badge badge-conflict">⛔ Blackout Conflict</span>'
         elif "HIGH" in priority:
             p_class = "p-high"
-            p_icon = "🔥 "
+            p_badge = f'<span class="badge badge-high">🔥 {_esc(priority)}</span>'
         elif "MEDIUM" in priority:
             p_class = "p-med"
-            p_icon = "● "
+            p_badge = '<span class="badge badge-med">● Recommended</span>'
         else:
             p_class = "p-low"
-            p_icon = "○ "
+            p_badge = '<span class="badge badge-low">○ Standard</span>'
 
-        # Score styling
-        if score >= 90:
-            score_class = "score-top"
-        elif score >= 70:
-            score_class = "score-high"
-        elif score >= 50:
-            score_class = "score-mid"
+        # Eligibility Pill
+        if eligibility == "ELIGIBLE":
+            elig_pill = '<span class="pill pill-success">✓ Class 11/12 Eligible</span>'
+        elif eligibility == "INELIGIBLE":
+            elig_pill = '<span class="pill pill-danger">✕ Ineligible</span>'
         else:
-            score_class = "score-low"
+            elig_pill = '<span class="pill pill-warning">? Verify Eligibility</span>'
 
-        s_class = "s-tracked" if state == "tracked" else ("s-applied" if state == "applied" else "s-seen")
+        # Date status pill
+        date_pill = ""
+        if date_status == "uncertain" or not start_raw:
+            date_pill = '<span class="pill pill-warning" title="Event schedule unconfirmed">⚠️ Dates Unverified</span>'
+
+        # Deadline pill
+        if is_closed:
+            deadline_pill = '<span class="pill pill-danger">🛑 Closed</span>'
+        elif is_closing_soon:
+            deadline_pill = f'<span class="pill pill-warning">⏳ Closes: {deadline}{days_left_text}</span>'
+        else:
+            deadline_pill = f'<span class="pill pill-subtle">📅 Closes: {deadline}</span>'
+
+        # Location & Mode pills
+        loc_pill = f'<span class="pill {"pill-bengaluru" if is_bangalore else "pill-subtle"}">{"📍 Bengaluru" if is_bangalore else "📍 " + loc}</span>'
+        mode_pill = f'<span class="pill pill-mode mode-{mode}">{mode.title()}</span>'
 
         track_token = tracker_store.sign_action("track", e["event_id"])
         applied_token = tracker_store.sign_action("applied", e["event_id"])
         reject_token = tracker_store.sign_action("reject", e["event_id"])
 
-        mode_badge = f'<span class="mode-pill mode-{mode}">{mode.title()}</span>'
+        state_pill = f'<span class="state-indicator state-{state}">{state.title()}</span>'
 
+        # Conflict alert box inside card
+        conflict_box = ""
+        if is_conflict:
+            conflict_box = f"""
+            <div class="card-conflict-alert" role="alert">
+              <strong>⛔ Excluded due to Blackout Conflict:</strong>
+              <div>{why}</div>
+            </div>
+            """
+
+        # Multi-source discovery information
+        e_dict = dict(e) if not isinstance(e, dict) else e
+        ds_raw = e_dict.get("discovery_sources")
+        ds_list = []
+        if ds_raw:
+            try:
+                ds_list = json.loads(ds_raw) if isinstance(ds_raw, str) else ds_raw
+            except Exception:
+                ds_list = []
+
+        sources_tag = ""
+        if len(ds_list) > 1:
+            sources_names = [s.get("source_name") or s.get("source") for s in ds_list if s.get("source_name") or s.get("source")]
+            sources_tag = f'<div class="multi-source-tag">🌐 Discovered across {len(ds_list)} sources: {_esc(", ".join(sources_names[:3]))}</div>'
+
+        ann_url = e_dict.get("announcement_url")
+        ann_link = ""
+        if ann_url and ann_url != url:
+            ann_link = f' &middot; <a href="{_esc(ann_url)}" target="_blank" rel="noopener" class="ann-link">📢 Announcement &rarr;</a>'
+
+        # Card Item (Grid View)
+        cards_html += f"""
+        <article class="event-card {p_class} {'has-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-state="{state}" data-category="{category}" data-start="{start_raw}" data-title="{title.lower()}">
+          <div class="card-top">
+            <div class="badges-row">
+              {p_badge}
+              {mode_pill}
+              {loc_pill}
+              {date_pill}
+            </div>
+            <div class="score-badge" title="Algorithm recommendation score: {score}/100">
+              <span class="score-num">{score}</span>
+            </div>
+          </div>
+
+          <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
+          <div class="card-host">🏢 {host} <span class="source-tag">via {source}</span>{ann_link}</div>
+          {sources_tag}
+
+          <div class="card-specs">
+            <div class="spec-item"><span class="spec-k">Dates:</span> <span class="spec-v font-mono">{start} {f"&rarr; {end}" if end and end != start else ""} <span class="spec-duration">({duration_str})</span></span></div>
+            <div class="spec-item"><span class="spec-k">Registration:</span> <span class="spec-v">{deadline_pill}</span></div>
+            <div class="spec-item"><span class="spec-k">Team Size:</span> <span class="spec-v">👥 {team}</span></div>
+            <div class="spec-item"><span class="spec-k">Prize Pool:</span> <span class="spec-v">🏆 {prize}</span></div>
+            <div class="spec-item"><span class="spec-k">Student Status:</span> <span class="spec-v">{elig_pill}</span></div>
+          </div>
+
+          {conflict_box if is_conflict else f'<div class="card-why"><strong>Recommendation note:</strong> {why}</div>'}
+
+          <div class="card-footer">
+            <div class="card-state-wrap">{state_pill}</div>
+            <div class="card-actions">
+              <a class="btn btn-sm btn-track {'btn-active' if state == 'tracked' else ''}" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Shortlist</a>
+              <a class="btn btn-sm btn-applied {'btn-active' if state == 'applied' else ''}" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
+              <button class="btn btn-sm btn-icon" onclick="copyEventLink('{url}')" title="Copy event link">🔗</button>
+              <a class="btn btn-sm btn-reject" href="/reject?event_id={eid}&t={reject_token}" onclick="handleAjaxAction(event, '{eid}', 'reject', '{reject_token}')" title="Dismiss event">✕</a>
+              <a class="btn btn-sm btn-detail" href="/event/{eid}">Details &rarr;</a>
+            </div>
+          </div>
+        </article>
+        """
+
+        # Table Row Item (Table View)
         rows_html += f"""
-        <tr class="event-item {s_class}">
-          <td>
-            <div class="priority-wrap">
-              <span class="badge {p_class}">{p_icon}{priority}</span>
-              {sched_badge}
+        <tr class="event-item-row {'row-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-start="{start_raw}" data-title="{title.lower()}">
+          <td width="150">
+            <div class="table-p-wrap">
+              {p_badge}
+              {f'<span class="sub-conflict-txt">Excluded</span>' if is_conflict else ''}
             </div>
           </td>
-          <td>
-            <div class="score-circle {score_class}" aria-label="Score: {score} out of 100">{score}</div>
+          <td width="55" style="text-align:center;">
+            <div class="score-circle" aria-label="Score: {score}">{score}</div>
           </td>
           <td>
-            <div class="title-row">
-              <a class="item-title" href="{url}" target="_blank" rel="noopener">{title}</a>
-              {mode_badge}
+            <div class="table-title-row">
+              <a class="table-title" href="{url}" target="_blank" rel="noopener">{title}</a>
+              {loc_pill}
+              {mode_pill}
             </div>
-            <div class="item-meta">
-              <span class="meta-host">🏢 {host}</span> &middot; 
-              <span class="meta-loc">📍 {loc}</span> &middot; 
-              <span class="meta-date">📅 Starts: {start}</span>
+            <div class="table-meta">
+              <span>🏢 {host} <span class="source-tag">via {source}</span>{ann_link}</span> &middot;
+              <span class="font-mono">📅 {start} {f"&rarr; {end}" if end and end != start else ""} ({duration_str})</span> &middot;
+              <span>🏆 {prize}</span> &middot;
+              <span>👥 {team}</span>
             </div>
-            {f'<div class="item-why">{why}</div>' if why else ''}
+            <div class="table-why">{why}</div>
           </td>
-          <td>
-            <span class="elig-pill elig-{eligibility.lower()}">
-              {'✓ Class 11/12' if eligibility == 'ELIGIBLE' else ('? Verify' if eligibility == 'UNKNOWN' else '✕ Ineligible')}
-            </span>
-          </td>
-          <td>
-            <div class="deadline-wrap">
-              <span class="deadline-val">{deadline}</span>
-            </div>
-          </td>
-          <td>
-            <span class="state-pill state-{state}">{state.title()}</span>
-          </td>
-          <td class="action-cell">
-            <div class="btn-group" role="group" aria-label="Event actions">
-              <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}" title="Shortlist event" aria-label="Track {title}">📌 Track</a>
-              <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}" title="Mark applied" aria-label="Mark applied for {title}">🎯 Applied</a>
-              <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}" title="Dismiss event" aria-label="Dismiss {title}">✕ Dismiss</a>
-              <a class="btn btn-detail" href="/event/{eid}" title="Full details" aria-label="View details for {title}">Details &rarr;</a>
+          <td width="150">{elig_pill}</td>
+          <td width="150">{deadline_pill}</td>
+          <td width="90">{state_pill}</td>
+          <td width="220" style="text-align:right;">
+            <div class="btn-group">
+              <a class="btn btn-sm btn-track" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Track</a>
+              <a class="btn btn-sm btn-applied" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
+              <button class="btn btn-sm btn-icon" onclick="copyEventLink('{url}')" title="Copy link">🔗</button>
+              <a class="btn btn-sm btn-detail" href="/event/{eid}">Details</a>
             </div>
           </td>
         </tr>
@@ -422,200 +901,857 @@ def _dashboard_page(events, current_filter=None):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buildathon Radar - Student Opportunity Dashboard</title>
+<title>Buildathon Radar - Student Event Discovery &amp; Blackout Management</title>
 <style>
-:root {{
-  --bg-canvas: #f8fafc;
-  --bg-card: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #475569;
-  --border-subtle: #e2e8f0;
-  --border-light: #f1f5f9;
-  --teal-dark: #042f2e;
-  --teal-primary: #0d9488;
-  --teal-focus: #14b8a6;
-  --teal-light: #f0fdfa;
-  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+{_SHARED_HEAD_CSS}
+
+/* Spotlight Hero */
+.spotlight-hero {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 22px 26px;
+  margin-bottom: 22px;
+  position: relative;
+  overflow: hidden;
+  border-left: 4px solid var(--teal-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }}
-* {{ box-sizing: border-box; }}
-body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:var(--font-stack); color:var(--text-main); -webkit-font-smoothing:antialiased; }}
+.spotlight-hero:hover {{
+  box-shadow: var(--shadow-md);
+}}
+.spotlight-header {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}}
+.spotlight-tag-row {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}}
+.spotlight-tag {{
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--teal-primary);
+  background: var(--teal-light);
+  padding: 3px 8px;
+  border-radius: 4px;
+}}
+.spotlight-days-pill {{
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--emerald-primary);
+  background: var(--emerald-light);
+  padding: 3px 8px;
+  border-radius: 4px;
+}}
+.spotlight-subtag {{
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}}
+.spotlight-score {{
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}}
+.spotlight-score strong {{
+  color: var(--teal-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}}
+.spotlight-title {{
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.3px;
+}}
+.spotlight-title a {{
+  color: var(--text-main);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}}
+.spotlight-title a:hover {{
+  color: var(--teal-primary);
+  text-decoration: underline;
+}}
+.spotlight-meta {{
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}}
+.meta-item {{ display: inline-flex; align-items: center; gap: 4px; }}
+.meta-divider {{ color: var(--text-dim); }}
+.spotlight-why {{
+  font-size: 13px;
+  color: var(--text-main);
+  background: var(--bg-subtle);
+  border-left: 3px solid var(--teal-primary);
+  padding: 10px 14px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}}
+.spotlight-actions {{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}}
 
-/* Accessibility: Skip to Content */
-.skip-link {{ position:absolute; top:-40px; left:16px; background:var(--teal-primary); color:#ffffff; padding:8px 16px; border-radius:4px; font-weight:700; text-decoration:none; z-index:1000; transition:top 0.2s; }}
-.skip-link:focus {{ top:16px; }}
+/* Metrics Grid - Tabular Figures & Modern Shadcn Cards */
+.metrics {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}}
+.metric-card {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}}
+.metric-card:hover {{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-subtle);
+}}
+.metric-card.active-metric {{
+  border-color: var(--teal-primary);
+  box-shadow: 0 0 0 2px var(--teal-primary);
+}}
+.metric-top {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}}
+.metric-icon {{ font-size: 16px; }}
+.metric-trend {{
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+}}
+.trend-green {{ color: var(--emerald-primary); background: var(--emerald-light); }}
+.trend-teal {{ color: var(--teal-primary); background: var(--teal-light); }}
+.trend-amber {{ color: var(--amber-primary); background: var(--amber-light); }}
+.trend-indigo {{ color: var(--indigo-primary); background: var(--indigo-light); }}
+.trend-rose {{ color: var(--rose-primary); background: var(--rose-light); }}
 
-/* Accessible Focus Ring */
-:focus-visible {{ outline: 2px solid var(--teal-primary); outline-offset: 2px; }}
+.metric-card .num {{
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}}
+.metric-card .lbl {{
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 6px;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+}}
+.highlight-emerald {{ border-left: 3px solid var(--emerald-primary); }}
+.highlight-rose {{ border-left: 3px solid var(--rose-primary); }}
+.highlight-teal {{ border-left: 3px solid var(--teal-primary); }}
+.highlight-amber {{ border-left: 3px solid var(--amber-primary); }}
+.highlight-indigo {{ border-left: 3px solid var(--indigo-primary); }}
 
-header {{ background:var(--teal-dark); color:#fff; padding:18px 32px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #115e59; }}
-.brand {{ display:flex; align-items:center; gap:12px; }}
-.brand-title {{ font-size:19px; font-weight:700; letter-spacing:-0.3px; margin:0; }}
-.brand-badge {{ font-size:11px; background:#115e59; color:#a7f3d0; padding:3px 8px; border-radius:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }}
-.brand-badge::before {{ content:""; width:6px; height:6px; background:#10b981; border-radius:50%; display:inline-block; }}
-.tagline {{ font-size:12px; color:#99f6e4; margin-top:3px; }}
-.header-links a {{ color:#ccfbf1; text-decoration:none; font-size:13px; font-weight:500; margin-left:18px; transition:color 0.15s; border-radius:4px; padding:4px 8px; }}
-.header-links a:hover {{ color:#fff; background:rgba(255,255,255,0.08); }}
-.container {{ max-width:1320px; margin:24px auto; padding:0 20px; }}
+/* Filter & Controls Toolbar */
+.toolbar {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}}
+.toolbar-top {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}}
+.filter-tabs {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}}
+.tab-link {{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid transparent;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  min-height: 32px;
+}}
+.tab-link:hover {{
+  background: var(--border);
+  color: var(--text-main);
+}}
+.tab-link.active {{
+  background: var(--teal-primary);
+  color: #ffffff;
+  font-weight: 700;
+}}
 
-/* Metrics Grid */
-.metrics {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:20px; }}
-.metric-card {{ background:var(--bg-card); border-radius:8px; padding:16px 18px; text-align:left; border:1px solid var(--border-subtle); box-shadow:0 1px 2px rgba(0,0,0,0.03); text-decoration:none; color:inherit; display:block; transition:transform 0.1s ease, box-shadow 0.15s ease, border-color 0.15s ease; }}
-.metric-card:hover {{ transform:translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,0.05); border-color:#cbd5e1; }}
-.metric-card:active {{ transform:translateY(0); }}
-.metric-card .num {{ font-size:28px; font-weight:800; color:var(--text-main); line-height:1.1; letter-spacing:-0.5px; font-variant-numeric:tabular-nums; }}
-.metric-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); margin-top:6px; letter-spacing:0.5px; font-weight:600; }}
-.highlight-indigo {{ border-left:4px solid #6366f1; }}
-.highlight-indigo .num {{ color:#4338ca; }}
-.highlight-teal {{ border-left:4px solid var(--teal-primary); }}
-.highlight-teal .num {{ color:#0f766e; }}
-.highlight-emerald {{ border-left:4px solid #10b981; }}
-.highlight-blue {{ border-left:4px solid #3b82f6; }}
+.search-and-view {{ display: flex; align-items: center; gap: 10px; }}
+.search-box {{
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  min-width: 290px;
+  gap: 8px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}}
+.search-box:focus-within {{
+  border-color: var(--teal-primary);
+  background: var(--bg-card);
+  box-shadow: 0 0 0 2px var(--teal-light);
+}}
+.search-box input {{
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+  color: var(--text-main);
+}}
+.kbd-hint {{
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}}
 
-/* Controls Bar */
-.controls {{ background:var(--bg-card); border-radius:8px; padding:12px 18px; margin-bottom:16px; border:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }}
-.tabs {{ display:flex; flex-wrap:wrap; gap:6px; }}
-.tabs a {{ display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600; text-decoration:none; color:var(--text-muted); background:var(--border-light); transition:all 0.15s; }}
-.tabs a:hover {{ background:#e2e8f0; color:var(--text-main); }}
-.tabs a.active {{ background:var(--teal-primary); color:#ffffff; }}
+.view-toggle {{
+  display: inline-flex;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  border: 1px solid var(--border);
+}}
+.view-btn {{
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}}
+.view-btn:hover {{ color: var(--text-main); }}
+.view-btn.active {{
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-weight: 700;
+  box-shadow: var(--shadow-xs);
+}}
 
-/* Live Search Input */
-.search-box {{ display:inline-flex; align-items:center; background:var(--border-light); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 12px; min-width:320px; gap:8px; position:relative; }}
-.search-box:focus-within {{ border-color:var(--teal-primary); background:#ffffff; box-shadow:0 0 0 2px rgba(13,148,136,0.15); }}
-.search-box input {{ border:none; background:transparent; font-size:13px; outline:none; width:100%; font-family:inherit; color:var(--text-main); }}
-.kbd-hint {{ font-size:11px; font-family:inherit; background:#ffffff; border:1px solid var(--border-subtle); border-radius:4px; padding:2px 6px; color:var(--text-muted); line-height:1; pointer-events:none; }}
-.search-count {{ font-size:11px; font-weight:600; color:var(--teal-primary); white-space:nowrap; font-variant-numeric:tabular-nums; }}
-.clear-search-btn {{ background:none; border:none; color:var(--text-muted); font-size:13px; cursor:pointer; padding:2px 4px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; }}
-.clear-search-btn:hover {{ color:var(--text-main); background:#e2e8f0; }}
+.toolbar-secondary {{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}}
+.filter-select {{
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.15s ease;
+}}
+.filter-select:focus {{
+  border-color: var(--teal-primary);
+}}
 
-/* Table */
-.table-wrap {{ background:var(--bg-card); border-radius:8px; border:1px solid var(--border-subtle); overflow-x:auto; box-shadow:0 1px 3px rgba(0,0,0,0.03); -webkit-overflow-scrolling:touch; }}
-table {{ width:100%; border-collapse:collapse; text-align:left; }}
-caption.sr-only {{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }}
-th {{ background:#f8fafc; padding:12px 16px; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); font-weight:700; border-bottom:1px solid var(--border-subtle); white-space:nowrap; }}
-td {{ padding:14px 16px; border-bottom:1px solid var(--border-light); font-size:13px; vertical-align:top; }}
-tr:hover td {{ background:#fbfcfd; }}
+/* Cards Grid */
+.cards-grid {{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 18px;
+  margin-bottom: 24px;
+}}
+.event-card {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}}
+.event-card:hover {{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border-subtle);
+}}
+.event-card.has-conflict {{
+  border-left: 4px solid var(--rose-primary);
+}}
 
-/* Score circle */
-.score-circle {{ width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; font-variant-numeric:tabular-nums; }}
-.score-top {{ background:#dcfce7; color:#15803d; border:2px solid #86efac; }}
-.score-high {{ background:#ccfbf1; color:#0f766e; border:2px solid #5eead4; }}
-.score-mid {{ background:#fef3c7; color:#b45309; border:2px solid #fde68a; }}
-.score-low {{ background:#f1f5f9; color:#475569; border:2px solid #cbd5e1; }}
+.card-top {{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+}}
+.badges-row {{ display: flex; flex-wrap: wrap; gap: 5px; }}
+.score-badge {{
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--teal-light);
+  color: var(--teal-primary);
+  border: 1.5px solid var(--teal-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}}
 
-/* Priority and Schedule Badges */
-.priority-wrap {{ display:flex; flex-direction:column; gap:5px; align-items:flex-start; }}
-.badge {{ display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; white-space:nowrap; }}
-.p-high {{ background:#ecfdf5; color:#065f46; }}
-.p-med {{ background:#fffbeb; color:#92400e; }}
-.p-low {{ background:#f1f5f9; color:#475569; }}
-.p-conflict {{ background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }}
+.card-title {{
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  line-height: 1.35;
+  letter-spacing: -0.2px;
+}}
+.card-title a {{
+  color: var(--text-main);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}}
+.card-title a:hover {{
+  color: var(--teal-primary);
+  text-decoration: underline;
+}}
+.card-host {{
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}}
+.source-tag {{ font-size: 11px; color: var(--text-dim); margin-left: 4px; }}
+.ann-link {{
+  color: var(--teal-primary);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+}}
+.multi-source-tag {{
+  font-size: 11px;
+  color: var(--teal-primary);
+  font-weight: 600;
+  margin-bottom: 8px;
+}}
 
-.sched-pill {{ display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.3px; }}
-.sched-fw {{ background:#e0e7ff; color:#3730a3; }}
-.sched-pw {{ background:#f3e8ff; color:#6b21a8; }}
-.sched-fwd {{ background:#e0f2fe; color:#0369a1; }}
-.sched-pwd {{ background:#f4f4f5; color:#52525b; }}
-.sched-conflict {{ background:#fee2e2; color:#b91c1c; }}
+.card-specs {{
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}}
+.spec-item {{ display: flex; justify-content: space-between; align-items: center; }}
+.spec-k {{ color: var(--text-muted); font-weight: 600; }}
+.spec-v {{ color: var(--text-main); font-weight: 700; }}
+.font-mono {{ font-family: var(--font-mono); font-size: 11px; }}
+.spec-duration {{ color: var(--text-dim); font-weight: 500; font-size: 11px; }}
 
-/* Event Content */
-.title-row {{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }}
-.item-title {{ font-size:15px; font-weight:700; color:var(--text-main); text-decoration:none; line-height:1.3; }}
-.item-title:hover {{ color:var(--teal-primary); text-decoration:underline; }}
-.mode-pill {{ font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 6px; border-radius:3px; background:#f1f5f9; color:#475569; }}
-.mode-in-person {{ background:#dbeafe; color:#1e40af; }}
-.mode-online {{ background:#ede9fe; color:#5b21b6; }}
-.item-meta {{ font-size:12px; color:var(--text-muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; }}
-.item-why {{ font-size:12px; color:#134e4a; margin-top:6px; background:#f0fdfa; padding:6px 10px; border-left:3px solid var(--teal-primary); border-radius:0 4px 4px 0; font-style:italic; line-height:1.4; }}
+.card-why {{
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-left: 3px solid var(--teal-primary);
+  padding: 8px 10px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 14px;
+  line-height: 1.45;
+  flex: 1;
+}}
+.card-conflict-alert {{
+  background: var(--rose-light);
+  border-left: 3px solid var(--rose-primary);
+  padding: 8px 10px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 12px;
+  color: #991b1b;
+  margin-bottom: 14px;
+  line-height: 1.45;
+}}
+[data-theme="dark"] .card-conflict-alert {{ color: #fda4af; }}
 
-/* Eligibility & Status */
-.elig-pill {{ display:inline-block; font-size:11px; font-weight:700; padding:3px 8px; border-radius:4px; }}
-.elig-eligible {{ background:#dcfce7; color:#166534; }}
-.elig-unknown {{ background:#fef3c7; color:#92400e; }}
-.elig-ineligible {{ background:#fee2e2; color:#991b1b; }}
+.card-footer {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  gap: 8px;
+  flex-wrap: wrap;
+}}
+.card-actions {{ display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }}
 
-.deadline-val {{ font-variant-numeric:tabular-nums; font-weight:600; }}
-.state-pill {{ font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 7px; border-radius:4px; }}
-.state-seen {{ background:#f1f5f9; color:#64748b; }}
-.state-tracked {{ background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; }}
-.state-applied {{ background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; }}
-.state-rejected {{ background:#fef2f2; color:#dc2626; }}
+/* Badges & Pills - High Contrast Semantic */
+.badge {{
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}}
+.badge-high {{ background: var(--emerald-light); color: var(--emerald-primary); }}
+.badge-med {{ background: var(--amber-light); color: var(--amber-primary); }}
+.badge-low {{ background: var(--bg-subtle); color: var(--text-muted); }}
+.badge-conflict {{ background: var(--rose-light); color: var(--rose-primary); }}
 
-/* Actions */
-.btn-group {{ display:flex; gap:4px; align-items:center; justify-content:flex-end; }}
-.btn {{ display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:5px; font-size:12px; font-weight:600; text-decoration:none; transition:all 0.15s; border:1px solid transparent; min-height:30px; }}
-.btn-track {{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }}
-.btn-track:hover {{ background:#059669; color:#fff; }}
-.btn-applied {{ background:#eff6ff; color:#1e40af; border-color:#bfdbfe; }}
-.btn-applied:hover {{ background:#2563eb; color:#fff; }}
-.btn-reject {{ background:#fef2f2; color:#991b1b; border-color:#fecaca; }}
-.btn-reject:hover {{ background:#dc2626; color:#fff; }}
-.btn-detail {{ background:#f8fafc; color:#475569; border-color:var(--border-subtle); }}
-.btn-detail:hover {{ background:#e2e8f0; color:var(--text-main); }}
+.pill {{
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}}
+.pill-success {{ background: var(--emerald-light); color: var(--emerald-primary); }}
+.pill-warning {{ background: var(--amber-light); color: var(--amber-primary); }}
+.pill-danger {{ background: var(--rose-light); color: var(--rose-primary); }}
+.pill-subtle {{ background: var(--bg-subtle); color: var(--text-muted); }}
+.pill-bengaluru {{
+  background: var(--teal-light);
+  color: var(--teal-primary);
+  border: 1px solid var(--teal-primary);
+}}
+.pill-mode {{ text-transform: uppercase; font-size: 10px; }}
+.mode-in-person {{ background: var(--indigo-light); color: var(--indigo-primary); }}
+.mode-online {{ background: var(--purple-light); color: var(--purple-primary); }}
+.mode-hybrid {{ background: var(--teal-light); color: var(--teal-primary); }}
 
-/* Empty States */
-.empty-state {{ text-align:center; padding:48px 24px; color:var(--text-muted); }}
-.empty-icon {{ font-size:36px; margin-bottom:12px; }}
-.empty-state h3 {{ font-size:16px; font-weight:700; color:var(--text-main); margin:0 0 6px 0; }}
-.empty-state p {{ font-size:13px; max-width:440px; margin:0 auto 16px auto; line-height:1.5; }}
+.state-indicator {{
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+}}
+.state-seen {{ background: var(--bg-subtle); color: var(--text-dim); }}
+.state-tracked {{ background: var(--emerald-light); color: var(--emerald-primary); }}
+.state-applied {{ background: var(--indigo-light); color: var(--indigo-primary); }}
+.state-rejected {{ background: var(--rose-light); color: var(--rose-primary); }}
+
+/* Buttons - Accessible, High Tap Target */
+.btn {{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  font-family: inherit;
+  min-height: 32px;
+}}
+.btn-sm {{ padding: 4px 8px; font-size: 11px; min-height: 28px; }}
+.btn-icon {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
+.btn-icon:hover {{ background: var(--border); color: var(--text-main); }}
+.btn-track {{ background: var(--bg-subtle); color: var(--text-main); border-color: var(--border); }}
+.btn-track:hover, .btn-track.btn-active {{ background: var(--emerald-primary); color: #fff; border-color: var(--emerald-primary); }}
+.btn-applied {{ background: var(--bg-subtle); color: var(--text-main); border-color: var(--border); }}
+.btn-applied:hover, .btn-applied.btn-active {{ background: var(--indigo-primary); color: #fff; border-color: var(--indigo-primary); }}
+.btn-reject {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
+.btn-reject:hover {{ background: var(--rose-primary); color: #fff; border-color: var(--rose-primary); }}
+.btn-detail {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
+.btn-detail:hover {{ background: var(--border); color: var(--text-main); }}
+.btn-outline {{ background: transparent; color: var(--text-main); border: 1px solid var(--border); }}
+.btn-outline:hover {{ background: var(--bg-subtle); }}
+.btn-primary-link {{ background: var(--teal-primary); color: #fff; }}
+.btn-primary-link:hover {{ background: var(--teal-hover); }}
+
+/* Table View */
+.table-wrap {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
+  overflow-x: auto;
+  margin-bottom: 24px;
+}}
+table {{ width: 100%; border-collapse: collapse; text-align: left; }}
+th {{
+  background: var(--bg-subtle);
+  padding: 12px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 800;
+  border-bottom: 1px solid var(--border);
+}}
+td {{
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  vertical-align: top;
+}}
+tr:hover td {{ background: var(--bg-hover); }}
+.row-conflict {{ background: rgba(244, 63, 94, 0.03); }}
+.table-title {{ font-weight: 700; color: var(--text-main); text-decoration: none; }}
+.table-title:hover {{ color: var(--teal-primary); text-decoration: underline; }}
+.table-meta {{ font-size: 12px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }}
+.table-why {{ font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }}
+.score-circle {{
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--teal-light);
+  color: var(--teal-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--teal-primary);
+}}
+
+/* Toast Notification */
+.toast-notice {{
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--teal-primary);
+  padding: 12px 20px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 1000;
+  display: none;
+  animation: slideUpToast 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}}
+@keyframes slideUpToast {{
+  from {{ transform: translateY(12px); opacity: 0; }}
+  to {{ transform: translateY(0); opacity: 1; }}
+}}
+
+/* Empty state design */
+.empty-state {{
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 56px 24px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}}
+.empty-state-icon {{ font-size: 36px; margin-bottom: 12px; }}
+.empty-state-title {{ font-size: 16px; font-weight: 700; margin: 0 0 6px 0; }}
+.empty-state-desc {{ font-size: 13px; color: var(--text-muted); margin: 0 0 16px 0; }}
 
 @media (max-width: 768px) {{
-  header {{ padding:14px 18px; }}
-  .container {{ padding:0 12px; }}
-  .search-box {{ min-width:100%; }}
-  .controls {{ flex-direction:column; align-items:stretch; }}
-  .tabs {{ overflow-x:auto; padding-bottom:4px; flex-wrap:nowrap; -webkit-overflow-scrolling:touch; }}
-  .metrics {{ grid-template-columns:repeat(2, 1fr); }}
+  header.app-header {{ padding: 12px 16px; flex-direction: column; align-items: stretch; gap: 10px; }}
+  .container {{ padding: 0 12px; }}
+  .metrics {{ grid-template-columns: repeat(2, 1fr); }}
+  .cards-grid {{ grid-template-columns: 1fr; }}
+  .search-box {{ min-width: 100%; }}
+  .toolbar-top {{ flex-direction: column; align-items: stretch; }}
+  .search-and-view {{ width: 100%; }}
 }}
 </style>
 <script>
-function filterTable() {{
-  const query = document.getElementById('radarSearch').value.toLowerCase().trim();
-  const rows = document.querySelectorAll('tbody tr.event-item');
-  const emptyBox = document.getElementById('noMatchState');
-  const clearBtn = document.getElementById('clearSearchBtn');
+// Theme support (light/dark system sync & persistence)
+function toggleTheme() {{
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const nxt = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', nxt);
+  localStorage.setItem('radar_theme', nxt);
+  updateThemeBtn();
+}}
+function updateThemeBtn() {{
+  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+}}
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.setAttribute('data-theme', savedTheme);
+window.addEventListener('DOMContentLoaded', updateThemeBtn);
+
+// View switch (Grid vs Table)
+function setViewMode(mode) {{
+  const grid = document.getElementById('cardsContainer');
+  const table = document.getElementById('tableContainer');
+  const btnGrid = document.getElementById('btnViewGrid');
+  const btnTable = document.getElementById('btnViewTable');
+
+  if (mode === 'table') {{
+    if (grid) grid.style.display = 'none';
+    if (table) table.style.display = 'block';
+    if (btnGrid) btnGrid.classList.remove('active');
+    if (btnTable) btnTable.classList.add('active');
+    localStorage.setItem('radar_view', 'table');
+  }} else {{
+    if (grid) grid.style.display = 'grid';
+    if (table) table.style.display = 'none';
+    if (btnGrid) btnGrid.classList.add('active');
+    if (btnTable) btnTable.classList.remove('active');
+    localStorage.setItem('radar_view', 'grid');
+  }}
+}}
+
+// Instant Client-side filtering, searching & sorting
+function filterEvents() {{
+  const query = (document.getElementById('radarSearch').value || '').toLowerCase().trim();
+  const locVal = (document.getElementById('filterLocation')?.value || 'all').toLowerCase();
+  const modeVal = (document.getElementById('filterMode')?.value || 'all').toLowerCase();
+  const sortVal = document.getElementById('sortSelect')?.value || 'score';
+
+  const cardsContainer = document.getElementById('cardsContainer');
+  const tableContainer = document.getElementById('tableContainer');
+
+  const cards = Array.from(document.querySelectorAll('.event-card'));
+  const rows = Array.from(document.querySelectorAll('.event-item-row'));
+
   let matchCount = 0;
 
-  rows.forEach(r => {{
-    const text = r.innerText.toLowerCase();
-    if (!query || text.includes(query)) {{
-      r.style.display = '';
+  function matches(el) {{
+    const text = el.innerText.toLowerCase();
+    const mode = (el.getAttribute('data-mode') || '').toLowerCase();
+    const isBangalore = el.getAttribute('data-bengaluru') === 'true';
+
+    if (query && !text.includes(query)) return false;
+    if (locVal === 'bangalore' && !isBangalore) return false;
+    if (modeVal !== 'all' && mode !== modeVal) return false;
+    return true;
+  }}
+
+  // Sort comparator
+  function compareEls(a, b) {{
+    if (sortVal === 'score') {{
+      const sa = parseInt(a.getAttribute('data-score') || '0', 10);
+      const sb = parseInt(b.getAttribute('data-score') || '0', 10);
+      return sb - sa;
+    }} else if (sortVal === 'date') {{
+      const da = a.getAttribute('data-start') || '9999';
+      const db = b.getAttribute('data-start') || '9999';
+      return da.localeCompare(db);
+    }} else if (sortVal === 'title') {{
+      const ta = a.getAttribute('data-title') || '';
+      const tb = b.getAttribute('data-title') || '';
+      return ta.localeCompare(tb);
+    }}
+    return 0;
+  }}
+
+  cards.sort(compareEls);
+  rows.sort(compareEls);
+
+  cards.forEach(c => {{
+    const ok = matches(c);
+    c.style.display = ok ? 'flex' : 'none';
+    if (ok) {{
       matchCount++;
-    }} else {{
-      r.style.display = 'none';
+      cardsContainer.appendChild(c);
+    }}
+  }});
+
+  const tableBody = document.querySelector('table tbody');
+  rows.forEach(r => {{
+    const ok = matches(r);
+    r.style.display = ok ? '' : 'none';
+    if (ok && tableBody) {{
+      tableBody.appendChild(r);
     }}
   }});
 
   const countEl = document.getElementById('searchCount');
-  if (query) {{
-    countEl.textContent = matchCount + ' matching';
-    if (clearBtn) clearBtn.style.display = 'inline-flex';
-    if (emptyBox) emptyBox.style.display = matchCount === 0 ? 'block' : 'none';
-  }} else {{
-    countEl.textContent = '';
-    if (clearBtn) clearBtn.style.display = 'none';
-    if (emptyBox) emptyBox.style.display = 'none';
+  if (countEl) {{
+    countEl.textContent = query ? matchCount + ' matching' : '';
+  }}
+  const visibleSummary = document.getElementById('visibleSummaryCount');
+  if (visibleSummary) {{
+    visibleSummary.textContent = matchCount;
+  }}
+
+  const emptyCardState = document.getElementById('emptyCardState');
+  if (emptyCardState) {{
+    emptyCardState.style.display = matchCount === 0 ? 'block' : 'none';
   }}
 }}
 
-function clearSearch() {{
-  const input = document.getElementById('radarSearch');
-  if (input) {{
-    input.value = '';
-    filterTable();
-    input.focus();
+function resetFilters() {{
+  const s = document.getElementById('radarSearch');
+  if (s) s.value = '';
+  const fl = document.getElementById('filterLocation');
+  if (fl) fl.value = 'all';
+  const fm = document.getElementById('filterMode');
+  if (fm) fm.value = 'all';
+  const sort = document.getElementById('sortSelect');
+  if (sort) sort.value = 'score';
+  filterEvents();
+}}
+
+// AJAX Action handling without full page refresh
+async function handleAjaxAction(event, eventId, action, token) {{
+  if (event) event.preventDefault();
+  try {{
+    const resp = await fetch('/api/action', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{ event_id: eventId, action: action, token: token }})
+    }});
+    const data = await resp.json();
+    if (data.status === 'ok') {{
+      const actionName = action === 'track' ? 'Shortlisted' : (action === 'applied' ? 'Applied' : 'Rejected');
+      showToast(`✓ Marked as ${{actionName}}`);
+      // Update UI state indicators
+      document.querySelectorAll(`[data-id="${{eventId}}"] .state-indicator`).forEach(el => {{
+        el.textContent = data.state.toUpperCase();
+        el.className = 'state-indicator state-' + data.state;
+      }});
+      if (action === 'track') {{
+        document.querySelectorAll(`[data-id="${{eventId}}"] .btn-track`).forEach(btn => btn.classList.add('btn-active'));
+      }} else if (action === 'applied') {{
+        document.querySelectorAll(`[data-id="${{eventId}}"] .btn-applied`).forEach(btn => btn.classList.add('btn-active'));
+      }}
+    }} else {{
+      window.location.href = `/${{action}}?event_id=${{eventId}}&t=${{token}}`;
+    }}
+  }} catch(e) {{
+    window.location.href = `/${{action}}?event_id=${{eventId}}&t=${{token}}`;
   }}
 }}
+
+function copyEventLink(url) {{
+  navigator.clipboard.writeText(url).then(() => {{
+    showToast('✓ Event link copied to clipboard!');
+  }}).catch(() => {{
+    showToast('Link: ' + url);
+  }});
+}}
+
+function showToast(msg) {{
+  const t = document.getElementById('toastNotice');
+  if (t) {{
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => {{ t.style.display = 'none'; }}, 3500);
+  }}
+}}
+
+async function triggerDiscoveryScan() {{
+  const btn = document.getElementById('btnScanNow');
+  if (btn) {{
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning 27 sources...';
+  }}
+  showToast('Starting discovery scan across 27 sources...');
+  try {{
+    const resp = await fetch('/api/scan', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{}})
+    }});
+    const data = await resp.json();
+    if (data.status === 'ok') {{
+      showToast(`Scan complete in ${{data.duration_seconds}}s: ${{data.new_events}} new, ${{data.updated_events}} updated!`);
+      setTimeout(() => window.location.reload(), 1500);
+    }} else {{
+      showToast('Scan error: ' + (data.error || 'Failed'));
+      if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan Hackathons'; }}
+    }}
+  }} catch (err) {{
+    showToast('Network error during discovery scan');
+    if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan Hackathons'; }}
+  }}
+}}
+
+window.addEventListener('DOMContentLoaded', () => {{
+  const savedView = localStorage.getItem('radar_view') || 'grid';
+  setViewMode(savedView);
+}});
 
 window.addEventListener('keydown', function(e) {{
   const input = document.getElementById('radarSearch');
   if (e.key === '/' && document.activeElement !== input) {{
     e.preventDefault();
-    if (input) {{
-      input.focus();
-      input.select();
-    }}
+    if (input) {{ input.focus(); input.select(); }}
   }} else if (e.key === 'Escape' && document.activeElement === input) {{
-    clearSearch();
+    input.value = '';
+    filterEvents();
     input.blur();
   }}
 }});
@@ -623,65 +1759,764 @@ window.addEventListener('keydown', function(e) {{
 </head>
 <body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
-<header role="banner">
-  <div class="brand">
+<header class="app-header" role="banner">
+  <div class="brand-group">
     <div>
       <div style="display:flex; align-items:center; gap:8px;">
-        <h1 class="brand-title">🛰️ Buildathon Radar</h1>
-        <span class="brand-badge" aria-label="Status: Live Radar">Live Radar</span>
+        <a href="/dashboard" class="brand-title">🛰️ Buildathon Radar</a>
+        <span class="brand-badge">Live Discovery</span>
       </div>
-      <div class="tagline">Indian High-School Student Edition (Class 11/12) &middot; Bengaluru &middot; Free &amp; Weekend Prioritized</div>
+      <div class="brand-sub">Indian High School Student Edition &middot; Bengaluru &middot; Blackout-Aware Filtering</div>
     </div>
   </div>
-  <nav class="header-links" aria-label="Quick links">
-    <a href="/list">Read-Only List</a>
-    <a href="/api/events" target="_blank" rel="noopener">JSON API</a>
+  <nav class="nav-toolbar" aria-label="Main Navigation">
+    <a href="/dashboard" class="nav-btn {'active' if not current_filter or current_filter != 'excluded' else ''}">⚡ Dashboard</a>
+    <a href="/dashboard?filter=excluded" class="nav-btn {'active' if current_filter == 'excluded' else ''}">⛔ Excluded Events</a>
+    <a href="/calendar" class="nav-btn">📅 Blackout Calendar</a>
+    <a href="/sources" class="nav-btn">🌐 Sources</a>
+    <button id="btnScanNow" class="nav-btn" style="background:var(--teal-primary); color:#ffffff; border-color:var(--teal-primary); cursor:pointer; font-weight:700;" onclick="triggerDiscoveryScan()" title="Trigger discovery across all 27 platforms">⚡ Scan Hackathons</button>
+    <a href="/list" class="nav-btn">📋 List View</a>
+    <a href="/api/events" class="nav-btn" target="_blank" rel="noopener">🔌 API</a>
+    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" aria-label="Toggle dark/light theme">🌙 Dark</button>
   </nav>
 </header>
+
 <main id="main-content" role="main" class="container">
-  {cards_html}
-  <div class="controls">
-    <nav class="tabs" aria-label="Filter views">
-      <a href="/dashboard" class="{'active' if not current_filter else ''}">All Active ({total})</a>
-      <a href="/dashboard?filter=bengaluru" class="{'active' if current_filter == 'bengaluru' else ''}">📍 Bengaluru In-Person</a>
-      <a href="/dashboard?filter=free_weekend" class="{'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend ({free_weekend_count})</a>
-      <a href="/dashboard?filter=high" class="{'active' if current_filter == 'high' else ''}">🔥 High Priority ({high_count})</a>
-      <a href="/dashboard?filter=unverified" class="{'active' if current_filter == 'unverified' else ''}">⚠️ Needs Verification ({unverified_count})</a>
-      <a href="/dashboard?filter=tracked" class="{'active' if current_filter == 'tracked' else ''}">📌 Shortlisted ({tracked_count})</a>
-      <a href="/dashboard?filter=applied" class="{'active' if current_filter == 'applied' else ''}">🎯 Applied ({applied_count})</a>
-      <a href="/dashboard?filter=deadlines" class="{'active' if current_filter == 'deadlines' else ''}">📅 Deadlines</a>
-    </nav>
-    <div class="search-box">
-      <span aria-hidden="true">🔍</span>
-      <input type="search" id="radarSearch" placeholder="Filter by title, AI theme, host, city..." aria-label="Search opportunities" oninput="filterTable()">
-      <kbd class="kbd-hint" title="Press / to focus search" aria-hidden="true">/</kbd>
-      <span id="searchCount" class="search-count" role="status" aria-live="polite"></span>
-      <button id="clearSearchBtn" class="clear-search-btn" style="display:none;" onclick="clearSearch()" aria-label="Clear search">✕</button>
+  {next_event_html}
+  {metrics_html}
+
+  <div class="toolbar">
+    <div class="toolbar-top">
+      <nav class="filter-tabs" aria-label="Quick Filter Views">
+        <a href="/dashboard" class="tab-link {'active' if not current_filter else ''}">All Upcoming ({total_upcoming})</a>
+        <a href="/dashboard?filter=eligible" class="tab-link {'active' if current_filter == 'eligible' else ''}">✓ Eligible ({eligible_count})</a>
+        <a href="/dashboard?filter=bengaluru" class="tab-link {'active' if current_filter == 'bengaluru' else ''}">📍 Bengaluru ({bangalore_count})</a>
+        <a href="/dashboard?filter=free_weekend" class="tab-link {'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend</a>
+        <a href="/dashboard?filter=high" class="tab-link {'active' if current_filter == 'high' else ''}">🔥 High Priority</a>
+        <a href="/dashboard?filter=unverified" class="tab-link {'active' if current_filter == 'unverified' else ''}">⚠️ Needs Verification ({unverified_count})</a>
+        <a href="/dashboard?filter=tracked" class="tab-link {'active' if current_filter == 'tracked' else ''}">📌 Shortlisted ({tracked_count})</a>
+        <a href="/dashboard?filter=applied" class="tab-link {'active' if current_filter == 'applied' else ''}">🎯 Applied ({applied_count})</a>
+        <a href="/dashboard?filter=excluded" class="tab-link {'active' if current_filter == 'excluded' else ''}">⛔ Blackout Excluded ({blackout_excluded})</a>
+      </nav>
+
+      <div class="search-and-view">
+        <div class="search-box">
+          <span aria-hidden="true">🔍</span>
+          <input type="search" id="radarSearch" placeholder="Search hackathons, hosts, topics..." aria-label="Search opportunities" oninput="filterEvents()">
+          <kbd class="kbd-hint" title="Press / to focus">/</kbd>
+          <span id="searchCount" style="font-size:11px; font-weight:700; color:var(--teal-primary);"></span>
+        </div>
+        <div class="view-toggle" role="group" aria-label="View switcher">
+          <button id="btnViewGrid" class="view-btn active" onclick="setViewMode('grid')" title="Grid Card View">▦</button>
+          <button id="btnViewTable" class="view-btn" onclick="setViewMode('table')" title="Compact Table View">☰</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar-secondary">
+      <span>Filters:</span>
+      <select id="filterLocation" class="filter-select" onchange="filterEvents()">
+        <option value="all">Location: All</option>
+        <option value="bangalore">📍 Bengaluru Priority</option>
+      </select>
+      <select id="filterMode" class="filter-select" onchange="filterEvents()">
+        <option value="all">Format: All</option>
+        <option value="in-person">In-Person Only</option>
+        <option value="online">Online Only</option>
+        <option value="hybrid">Hybrid</option>
+      </select>
+      <select id="sortSelect" class="filter-select" onchange="filterEvents()">
+        <option value="score">Sort by: Highest Match</option>
+        <option value="date">Sort by: Date Soonest</option>
+        <option value="title">Sort by: Title A-Z</option>
+      </select>
+      <div style="margin-left:auto; font-size:12px; color:var(--text-muted);">
+        Showing <strong id="visibleSummaryCount">{len(events)}</strong> opportunities
+      </div>
     </div>
   </div>
-  <div class="table-wrap">
+
+  <div id="cardsContainer" class="cards-grid">
+    {cards_html if cards_html else ""}
+    <div id="emptyCardState" class="empty-state" style="{'display:none;' if cards_html else 'display:block;'}">
+      <div class="empty-state-icon">🔍</div>
+      <h3 class="empty-state-title">No opportunities found</h3>
+      <p class="empty-state-desc">Try clearing your search query or switching filter tabs.</p>
+      <button class="btn btn-primary-link" onclick="resetFilters()">Reset Filters</button>
+    </div>
+  </div>
+
+  <div id="tableContainer" class="table-wrap" style="display:none;">
     <table role="table">
-      <caption class="sr-only">Student-eligible and prioritized buildathons and hackathons</caption>
       <thead>
         <tr>
-          <th scope="col" width="160">Priority &amp; Timing</th>
-          <th scope="col" width="50">Score</th>
-          <th scope="col">Event &amp; Recommendation Rationale</th>
-          <th scope="col" width="115">Eligibility</th>
-          <th scope="col" width="110">Deadline</th>
-          <th scope="col" width="80">State</th>
-          <th scope="col" width="230" style="text-align:right;">Actions</th>
+          <th scope="col">Priority &amp; Status</th>
+          <th scope="col" style="text-align:center;">Score</th>
+          <th scope="col">Hackathon &amp; Recommendation Rationale</th>
+          <th scope="col">Eligibility</th>
+          <th scope="col">Deadline</th>
+          <th scope="col">State</th>
+          <th scope="col" style="text-align:right;">Actions</th>
         </tr>
       </thead>
       <tbody>
-        {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:40px; color:#64748b;">No active opportunities match the selected criteria.</td></tr>'}
+        {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No events found matching the selected criteria.</td></tr>'}
       </tbody>
     </table>
-    <div id="noMatchState" class="empty-state" style="display:none;" role="status">
-      <div class="empty-icon" aria-hidden="true">🔎</div>
-      <h3>No matching events found</h3>
-      <p>Try searching for different keywords, AI tracks, city names, or clear your query.</p>
-      <button class="btn btn-detail" onclick="clearSearch()">Clear search query</button>
+  </div>
+</main>
+
+<div id="toastNotice" class="toast-notice" role="status"></div>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# DEDICATED BLACKOUT CALENDAR MANAGEMENT PAGE
+# ---------------------------------------------------------------------------
+def _calendar_page(blackouts):
+    total = len(blackouts)
+    personal_count = sum(1 for b in blackouts if b["category"] == "Personal")
+    academic_count = sum(1 for b in blackouts if b["category"] == "Academic Test")
+    exam_count = sum(1 for b in blackouts if b["category"] == "Examination Period")
+    enabled_count = sum(1 for b in blackouts if b["enabled"])
+
+    table_rows = ""
+    for b in blackouts:
+        bid = b["id"]
+        title = _esc(b["title"])
+        s_date = _esc(b["start_date"])
+        e_date = _esc(b["end_date"])
+        cat = _esc(b["category"])
+        reason = _esc(b.get("reason") or "")
+        enabled = bool(b["enabled"])
+
+        # Category Badge
+        if cat == "Examination Period":
+            cat_badge = '<span class="pill pill-danger">Examination Period</span>'
+        elif cat == "Academic Test":
+            cat_badge = '<span class="pill pill-warning">Academic Test</span>'
+        else:
+            cat_badge = '<span class="pill pill-subtle">Personal</span>'
+
+        date_disp = f"{_format_date(s_date)} &rarr; {_format_date(e_date)}" if s_date != e_date else _format_date(s_date)
+
+        table_rows += f"""
+        <tr id="blackout-row-{bid}" class="{'row-disabled' if not enabled else ''}">
+          <td>{cat_badge}</td>
+          <td><strong>{title}</strong></td>
+          <td><code>{date_disp}</code></td>
+          <td style="color:var(--text-muted);">{reason}</td>
+          <td style="text-align:center;">
+            <label class="switch">
+              <input type="checkbox" {'checked' if enabled else ''} onchange="toggleBlackout({bid})">
+              <span class="slider round"></span>
+            </label>
+          </td>
+          <td style="text-align:right;">
+            <button class="btn btn-sm btn-detail" onclick="openEditModal({bid}, '{title}', '{s_date}', '{e_date}', '{cat}', '{reason}')">Edit</button>
+            <button class="btn btn-sm btn-reject" onclick="deleteBlackout({bid})">✕</button>
+          </td>
+        </tr>
+        """
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blackout Calendar &amp; Availability Manager - Buildathon Radar</title>
+<style>
+{_SHARED_HEAD_CSS}
+
+.calendar-hero {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  border-left: 5px solid var(--rose-primary);
+}}
+.calendar-hero h2 {{ margin:0 0 8px 0; font-size:22px; font-weight:800; }}
+.calendar-hero p {{ margin:0 0 16px 0; font-size:14px; color:var(--text-muted); line-height:1.5; }}
+
+.cal-stats {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }}
+.cal-stat-card {{ background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:14px; text-align:left; }}
+.cal-stat-card .num {{ font-size:24px; font-weight:800; }}
+.cal-stat-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:700; margin-top:4px; }}
+
+.section-head {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }}
+.section-title {{ font-size:17px; font-weight:800; margin:0; }}
+
+/* Modal */
+.modal-overlay {{
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5); backdrop-filter: blur(2px);
+  display: none; justify-content: center; align-items: center; z-index: 1000;
+}}
+.modal-card {{
+  background: var(--bg-card); border-radius: var(--radius-md);
+  border: 1px solid var(--border); padding: 28px; max-width: 500px; width: 90%;
+  box-shadow: var(--shadow-lg);
+}}
+.modal-card h3 {{ margin: 0 0 16px 0; font-size: 18px; }}
+.form-group {{ margin-bottom: 14px; }}
+.form-group label {{ display: block; font-size: 12px; font-weight: 700; margin-bottom: 5px; color: var(--text-muted); }}
+.form-input {{
+  width: 100%; padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-subtle); color: var(--text-main);
+  font-family: inherit; font-size: 13px;
+}}
+.form-input:focus {{ outline: 2px solid var(--teal-primary); background: var(--bg-card); }}
+.modal-actions {{ display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }}
+
+/* Toggle Switch */
+.switch {{ position: relative; display: inline-block; width: 34px; height: 18px; }}
+.switch input {{ opacity: 0; width: 0; height: 0; }}
+.slider {{ position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-subtle); transition: .2s; border-radius: 18px; }}
+.slider:before {{ position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }}
+input:checked + .slider {{ background-color: var(--emerald-primary); }}
+input:checked + .slider:before {{ transform: translateX(16px); }}
+.row-disabled {{ opacity: 0.5; }}
+</style>
+<script>
+function toggleTheme() {{
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const nxt = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', nxt);
+  localStorage.setItem('radar_theme', nxt);
+  updateThemeBtn();
+}}
+function updateThemeBtn() {{
+  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+}}
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.setAttribute('data-theme', savedTheme);
+window.addEventListener('DOMContentLoaded', updateThemeBtn);
+
+function openAddModal() {{
+  document.getElementById('modalTitle').textContent = 'Add Blackout Date / Period';
+  document.getElementById('blackoutId').value = '';
+  document.getElementById('inputTitle').value = '';
+  document.getElementById('inputStart').value = '';
+  document.getElementById('inputEnd').value = '';
+  document.getElementById('inputCategory').value = 'Personal';
+  document.getElementById('inputReason').value = '';
+  document.getElementById('blackoutModal').style.display = 'flex';
+}}
+
+function openEditModal(id, title, start, end, cat, reason) {{
+  document.getElementById('modalTitle').textContent = 'Edit Blackout Entry';
+  document.getElementById('blackoutId').value = id;
+  document.getElementById('inputTitle').value = title;
+  document.getElementById('inputStart').value = start;
+  document.getElementById('inputEnd').value = end;
+  document.getElementById('inputCategory').value = cat;
+  document.getElementById('inputReason').value = reason;
+  document.getElementById('blackoutModal').style.display = 'flex';
+}}
+
+function closeModal() {{
+  document.getElementById('blackoutModal').style.display = 'none';
+}}
+
+async function saveBlackout(event) {{
+  event.preventDefault();
+  const id = document.getElementById('blackoutId').value;
+  const payload = {{
+    title: document.getElementById('inputTitle').value,
+    start_date: document.getElementById('inputStart').value,
+    end_date: document.getElementById('inputEnd').value || document.getElementById('inputStart').value,
+    category: document.getElementById('inputCategory').value,
+    reason: document.getElementById('inputReason').value,
+    enabled: true
+  }};
+
+  const url = id ? `/api/blackouts/${{id}}` : '/api/blackouts';
+  const method = id ? 'PUT' : 'POST';
+
+  try {{
+    const resp = await fetch(url, {{
+      method: method,
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify(payload)
+    }});
+    if (resp.ok) {{
+      closeModal();
+      window.location.reload();
+    }} else {{
+      alert('Error saving blackout date');
+    }}
+  }} catch (e) {{
+    alert('Network error');
+  }}
+}}
+
+async function toggleBlackout(id) {{
+  try {{
+    const resp = await fetch(`/api/blackouts/${{id}}/toggle`, {{ method: 'POST' }});
+    if (resp.ok) {{
+      window.location.reload();
+    }}
+  }} catch(e) {{
+    alert('Error toggling blackout entry');
+  }}
+}}
+
+async function deleteBlackout(id) {{
+  if (!confirm('Are you sure you want to remove this blackout entry? Event conflicts will be recomputed.')) return;
+  try {{
+    const resp = await fetch(`/api/blackouts/${{id}}`, {{ method: 'DELETE' }});
+    if (resp.ok) {{
+      window.location.reload();
+    }}
+  }} catch(e) {{
+    alert('Error deleting blackout entry');
+  }}
+}}
+</script>
+</head>
+<body>
+<header class="app-header" role="banner">
+  <div class="brand-group">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <a href="/dashboard" class="brand-title">🛰️ Buildathon Radar</a>
+        <span class="brand-badge">Blackout System</span>
+      </div>
+      <div class="brand-sub">Personal Calendar Availability &amp; Examination Hard Exclusions</div>
+    </div>
+  </div>
+  <nav class="nav-toolbar" aria-label="Navigation">
+    <a href="/dashboard" class="nav-btn">⚡ Dashboard</a>
+    <a href="/dashboard?filter=excluded" class="nav-btn">⛔ Excluded Events</a>
+    <a href="/calendar" class="nav-btn active">📅 Blackout Calendar</a>
+    <a href="/sources" class="nav-btn">🌐 Sources</a>
+    <a href="/list" class="nav-btn">📋 List View</a>
+    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark</button>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="calendar-hero">
+    <h2>📅 Personal Blackout Calendar Management</h2>
+    <p>
+      These dates represent your hard commitments. Any hackathon or buildathon whose dates overlap even a single day of an active blackout entry is <strong>strictly excluded</strong> from your primary recommendations.
+      Eligibility is automatically recomputed across all stored events whenever you add, edit, toggle, or remove blackout dates.
+    </p>
+    <button class="btn btn-primary-link" onclick="openAddModal()">+ Add New Blackout Date / Period</button>
+  </section>
+
+  <div class="cal-stats">
+    <div class="cal-stat-card"><div class="num">{total}</div><div class="lbl">Total Rules</div></div>
+    <div class="cal-stat-card"><div class="num" style="color:var(--emerald-primary);">{enabled_count}</div><div class="lbl">Active Rules</div></div>
+    <div class="cal-stat-card"><div class="num" style="color:var(--purple-primary);">{personal_count}</div><div class="lbl">Personal Commitments</div></div>
+    <div class="cal-stat-card"><div class="num" style="color:var(--amber-primary);">{academic_count}</div><div class="lbl">ALLEN JEE Tests</div></div>
+    <div class="cal-stat-card"><div class="num" style="color:var(--rose-primary);">{exam_count}</div><div class="lbl">Exam Periods</div></div>
+  </div>
+
+  <div class="section-head">
+    <h3 class="section-title">Configured Blackout Dates &amp; Ranges</h3>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th width="140">Category</th>
+          <th width="220">Title</th>
+          <th width="200">Date Range</th>
+          <th>Reason &amp; Description</th>
+          <th width="80" style="text-align:center;">Status</th>
+          <th width="120" style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {table_rows}
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<div id="blackoutModal" class="modal-overlay" onclick="if(event.target === this) closeModal()">
+  <div class="modal-card">
+    <h3 id="modalTitle">Add Blackout Date / Period</h3>
+    <form onsubmit="saveBlackout(event)">
+      <input type="hidden" id="blackoutId">
+      <div class="form-group">
+        <label for="inputTitle">Title / Name *</label>
+        <input type="text" id="inputTitle" class="form-input" required placeholder="e.g. Major Internal Test 2">
+      </div>
+      <div class="form-group">
+        <label for="inputCategory">Category *</label>
+        <select id="inputCategory" class="form-input">
+          <option value="Personal">Personal</option>
+          <option value="Academic Test">Academic Test</option>
+          <option value="Examination Period">Examination Period</option>
+        </select>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="form-group">
+          <label for="inputStart">Start Date *</label>
+          <input type="date" id="inputStart" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label for="inputEnd">End Date *</label>
+          <input type="date" id="inputEnd" class="form-input" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="inputReason">Reason / Notes</label>
+        <input type="text" id="inputReason" class="form-input" placeholder="e.g. ALLEN JEE Test Day">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-detail" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary-link">Save Blackout Date</button>
+      </div>
+    </form>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# DEDICATED MULTI-PLATFORM DISCOVERY SOURCES MANAGEMENT PAGE
+# ---------------------------------------------------------------------------
+def _sources_page(sources, last_scan, recent_scans):
+    total = len(sources)
+    active_count = sum(1 for s in sources if s["enabled"])
+    total_events_discovered = sum(s.get("events_discovered", 0) for s in sources)
+    
+    last_scan_info = "Never scanned"
+    if last_scan:
+        dur = last_scan.get("duration_seconds", 0.0)
+        ts = _format_date(last_scan.get("timestamp", ""))
+        succ = last_scan.get("successful_sources", 0)
+        tot = last_scan.get("total_sources", 0)
+        new_ev = last_scan.get("new_events", 0)
+        last_scan_info = f"{ts} &middot; {dur}s ({succ}/{tot} healthy, +{new_ev} new)"
+
+    CATEGORIES = [
+        ("Dedicated Hackathon Platforms", "💻 Dedicated Platforms", "Primary global & Indian hackathon directories and challenge portals."),
+        ("Professional and Social Networks", "💬 Professional & Social Networks", "Legitimate public posts, organizer updates, DevRel announcements, and Reddit communities."),
+        ("Event Discovery Platforms", "🎟️ Event Discovery Platforms", "Ticketing platforms, developer summits, and city-wide tech competitions."),
+        ("Developer and Technology Communities", "👥 Developer & Tech Communities", "Grassroots chapters, Google Developer Groups, AWS & Microsoft communities, and FOSS United."),
+        ("Indian College and University Sources", "🎓 Indian Colleges & Tech Fests", "Engineering college fests, IIT/NIT/IIIT hackathons, and Bangalore campus challenges."),
+        ("Company and Startup Sources", "🏢 Company & Startup Sources", "Corporate challenges, developer challenges, and Indian tech startup hackathons."),
+        ("Search Engine-Based Discovery", "🔍 Targeted Search Pipeline", "Multi-query combinatorial web search across Bangalore, student terms, and dates."),
+    ]
+
+    source_by_cat = {}
+    for s in sources:
+        cat = s["category"]
+        source_by_cat.setdefault(cat, []).append(s)
+
+    categories_html = ""
+    for cat_key, cat_title, cat_desc in CATEGORIES:
+        cat_sources = source_by_cat.get(cat_key, [])
+        if not cat_sources:
+            continue
+
+        rows = ""
+        for s in cat_sources:
+            s_key = _esc(s["source_key"])
+            name = _esc(s["name"])
+            method = _esc(s["discovery_method"])
+            conf = s["confidence_level"]
+            enabled = bool(s["enabled"])
+            ev_count = s.get("events_discovered", 0)
+            succ = s.get("success_count", 0)
+            fail = s.get("fail_count", 0)
+            l_scan = _format_date(s.get("last_scan")) if s.get("last_scan") else "Never"
+            l_err = _esc(s.get("last_error") or "")
+
+            if conf == "High":
+                conf_badge = '<span class="pill" style="background:rgba(16,185,129,0.12); color:#059669; font-weight:700;">🛡️ High</span>'
+            elif conf == "Medium-High":
+                conf_badge = '<span class="pill" style="background:rgba(20,184,166,0.12); color:#0d9488; font-weight:700;">🛡️ Med-High</span>'
+            elif conf == "Medium":
+                conf_badge = '<span class="pill" style="background:rgba(59,130,246,0.12); color:#2563eb; font-weight:700;">🛡️ Medium</span>'
+            else:
+                conf_badge = '<span class="pill" style="background:rgba(245,158,11,0.12); color:#d97706; font-weight:700;">🛡️ Low</span>'
+
+            err_html = f'<div style="font-size:11px; color:var(--rose-primary); margin-top:3px;" title="{l_err}">⚠️ {l_err[:60]}...</div>' if l_err else ""
+
+            rows += f"""
+            <tr id="source-row-{s_key}" class="{'row-disabled' if not enabled else ''}">
+              <td width="50" style="text-align:center;">
+                <label class="switch" title="Enable or disable discovery from this source">
+                  <input type="checkbox" {'checked' if enabled else ''} onchange="toggleSource('{s_key}')">
+                  <span class="slider round"></span>
+                </label>
+              </td>
+              <td>
+                <div style="font-weight:700; color:var(--text-main); font-size:14px;">{name}</div>
+                <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+                  <code style="font-size:11px; background:var(--bg-subtle); padding:1px 5px; border-radius:4px; border:1px solid var(--border);">{s_key}</code>
+                  <span style="font-size:12px; color:var(--text-muted);">&middot; {method}</span>
+                </div>
+                {err_html}
+              </td>
+              <td width="120">{conf_badge}</td>
+              <td width="100" style="text-align:center; font-weight:700; font-size:14px;">{ev_count}</td>
+              <td width="100" style="text-align:center; font-size:12px;">
+                <span style="color:var(--emerald-primary); font-weight:700;">✓ {succ}</span> / 
+                <span style="color:var(--rose-primary); font-weight:700;">✗ {fail}</span>
+              </td>
+              <td width="130" style="font-size:12px; color:var(--text-muted);">{l_scan}</td>
+            </tr>
+            """
+
+        categories_html += f"""
+        <div class="category-block">
+          <div class="cat-head">
+            <div>
+              <h3 style="margin:0 0 4px 0; font-size:16px; font-weight:800;">{cat_title}</h3>
+              <div style="font-size:12px; color:var(--text-muted);">{cat_desc}</div>
+            </div>
+            <span class="badge badge-high" style="font-size:11px;">{len(cat_sources)} Sources</span>
+          </div>
+          <div class="table-wrap">
+            <table role="table">
+              <thead>
+                <tr>
+                  <th scope="col" style="text-align:center;">Active</th>
+                  <th scope="col">Source Name &amp; Discovery Method</th>
+                  <th scope="col">Confidence</th>
+                  <th scope="col" style="text-align:center;">Discovered</th>
+                  <th scope="col" style="text-align:center;">Health (✓/✗)</th>
+                  <th scope="col">Last Scanned</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        """
+
+    # Recent scans history rows
+    scans_html = ""
+    for sc in (recent_scans or []):
+        sid = sc.get("id")
+        ts = _format_date(sc.get("timestamp"))
+        dur = sc.get("duration_seconds", 0.0)
+        tot_s = sc.get("total_sources", 0)
+        succ_s = sc.get("successful_sources", 0)
+        fail_s = sc.get("failed_sources", 0)
+        new_e = sc.get("new_events", 0)
+        upd_e = sc.get("updated_events", 0)
+
+        health_pill = f'<span class="pill pill-mode mode-in-person">✓ {succ_s}/{tot_s}</span>' if fail_s == 0 else f'<span class="pill pill-mode mode-online">⚠️ {succ_s}/{tot_s} ({fail_s} err)</span>'
+
+        scans_html += f"""
+        <tr>
+          <td><code>#{sid}</code></td>
+          <td><strong>{ts}</strong></td>
+          <td>{dur}s</td>
+          <td>{health_pill}</td>
+          <td><span style="color:var(--emerald-primary); font-weight:700;">+{new_e}</span></td>
+          <td>{upd_e}</td>
+        </tr>
+        """
+
+    if not scans_html:
+        scans_html = '<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-muted);">No discovery scans recorded yet. Click "Scan All Sources Now" to run discovery.</td></tr>'
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Discovery Sources - Buildathon Radar</title>
+<style>
+{_SHARED_HEAD_CSS}
+.sources-hero {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  border-left: 5px solid var(--teal-primary);
+}}
+.sources-hero h2 {{ margin:0 0 8px 0; font-size:22px; font-weight:800; }}
+.sources-hero p {{ margin:0 0 16px 0; font-size:14px; color:var(--text-muted); line-height:1.5; }}
+
+.source-stats {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }}
+.source-stat-card {{ background:var(--bg-card); border-radius:var(--radius-sm); border:1px solid var(--border); padding:14px; text-align:left; }}
+.source-stat-card .num {{ font-size:24px; font-weight:800; }}
+.source-stat-card .lbl {{ font-size:11px; text-transform:uppercase; color:var(--text-muted); font-weight:700; margin-top:4px; }}
+
+.category-block {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+  overflow: hidden;
+}}
+.cat-head {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+}}
+
+/* Toggle Switch */
+.switch {{ position: relative; display: inline-block; width: 34px; height: 18px; }}
+.switch input {{ opacity: 0; width: 0; height: 0; }}
+.slider {{ position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-subtle); transition: .2s; border-radius: 18px; }}
+.slider:before {{ position: absolute; content: ""; height: 12px; width: 12px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }}
+input:checked + .slider {{ background-color: var(--emerald-primary); }}
+input:checked + .slider:before {{ transform: translateX(16px); }}
+.row-disabled {{ opacity: 0.45; }}
+</style>
+<script>
+function toggleTheme() {{
+  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const nxt = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', nxt);
+  localStorage.setItem('radar_theme', nxt);
+  updateThemeBtn();
+}}
+function updateThemeBtn() {{
+  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+}}
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.setAttribute('data-theme', savedTheme);
+window.addEventListener('DOMContentLoaded', updateThemeBtn);
+
+async function toggleSource(key) {{
+  try {{
+    const resp = await fetch(`/api/sources/${{key}}/toggle`, {{ method: 'POST' }});
+    if (resp.ok) {{
+      window.location.reload();
+    }} else {{
+      alert('Error toggling source');
+    }}
+  }} catch(e) {{
+    alert('Network error toggling source');
+  }}
+}}
+
+async function triggerDiscoveryScan() {{
+  const btn = document.getElementById('btnRunScan');
+  if (btn) {{
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning 27 sources...';
+  }}
+  try {{
+    const resp = await fetch('/api/scan', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify({{}})
+    }});
+    const data = await resp.json();
+    if (data.status === 'ok') {{
+      alert(`Scan complete in ${{data.duration_seconds}}s across ${{data.total_sources}} sources!\\n\\nNew events: ${{data.new_events}}\\nUpdated events: ${{data.updated_events}}\\nHealthy sources: ${{data.successful_sources}}/${{data.total_sources}}`);
+      window.location.reload();
+    }} else {{
+      alert('Discovery scan failed: ' + (data.detail || data.error || 'Unknown error'));
+      if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan All Sources Now'; }}
+    }}
+  }} catch(e) {{
+    alert('Network error while running scan');
+    if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan All Sources Now'; }}
+  }}
+}}
+</script>
+</head>
+<body>
+<header class="app-header" role="banner">
+  <div class="brand-group">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <a href="/dashboard" class="brand-title">🛰️ Buildathon Radar</a>
+        <span class="brand-badge">Multi-Platform Discovery</span>
+      </div>
+      <div class="brand-sub">Multi-Source Internet Discovery Engine &middot; Dedicated Platforms, Social, Communities &amp; Fests</div>
+    </div>
+  </div>
+  <nav class="nav-toolbar" aria-label="Navigation">
+    <a href="/dashboard" class="nav-btn">⚡ Dashboard</a>
+    <a href="/dashboard?filter=excluded" class="nav-btn">⛔ Excluded Events</a>
+    <a href="/calendar" class="nav-btn">📅 Blackout Calendar</a>
+    <a href="/sources" class="nav-btn active">🌐 Sources</a>
+    <a href="/list" class="nav-btn">📋 List View</a>
+    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()">🌙 Dark</button>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="sources-hero">
+    <h2>🌐 Multi-Platform Hackathon Discovery Engine</h2>
+    <p>
+      Buildathon Radar continuously discovers student opportunities across <strong>27 integrated platforms and sources</strong>: dedicated hackathon platforms, legitimate LinkedIn &amp; social feeds, ticketing directories, developer communities, Indian college tech fests, corporate challenges, and targeted web search engine queries.
+    </p>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <button id="btnRunScan" class="btn btn-primary-link" onclick="triggerDiscoveryScan()" style="font-size:13px; font-weight:700;">⚡ Scan All Sources Now</button>
+      <span style="font-size:13px; color:var(--text-muted);">Last scan: <strong>{last_scan_info}</strong></span>
+    </div>
+  </section>
+
+  <div class="source-stats">
+    <div class="source-stat-card">
+      <div class="num">{total}</div>
+      <div class="lbl">Monitored Platforms</div>
+    </div>
+    <div class="source-stat-card">
+      <div class="num" style="color:var(--emerald-primary);">{active_count}</div>
+      <div class="lbl">Active Sources</div>
+    </div>
+    <div class="source-stat-card">
+      <div class="num" style="color:var(--teal-primary);">{total_events_discovered}</div>
+      <div class="lbl">Opportunities Discovered</div>
+    </div>
+    <div class="source-stat-card">
+      <div class="num" style="font-size:18px; margin-top:4px;">100%</div>
+      <div class="lbl">Fault Isolated</div>
+    </div>
+  </div>
+
+  <div class="section-head" style="margin-bottom:16px;">
+    <h2 class="section-title">Platform Discovery Sources by Category</h2>
+  </div>
+
+  {categories_html}
+
+  <div class="category-block" style="margin-top:36px;">
+    <div class="cat-head">
+      <div>
+        <h3 style="margin:0 0 4px 0; font-size:16px; font-weight:800;">📜 Recent Discovery Scan Logs</h3>
+        <div style="font-size:12px; color:var(--text-muted);">Historical execution runtimes, source response health, and event delta counts.</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table role="table">
+        <thead>
+          <tr>
+            <th scope="col">Scan ID</th>
+            <th scope="col">Timestamp</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Sources Health</th>
+            <th scope="col">New Events</th>
+            <th scope="col">Updated Events</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scans_html}
+        </tbody>
+      </table>
     </div>
   </div>
 </main>
@@ -709,73 +2544,89 @@ def _event_detail_page(row):
     score = _esc(row["score"])
     why = _esc(row["why"] or "")
     state = _esc(row["state"])
+    is_conflict = bool(row["blackout_conflict"] if "blackout_conflict" in row.keys() else ("CONFLICT" in priority))
 
     track_token = tracker_store.sign_action("track", row["event_id"])
     applied_token = tracker_store.sign_action("applied", row["event_id"])
     reject_token = tracker_store.sign_action("reject", row["event_id"])
 
     return f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title} - Buildathon Radar</title>
 <style>
-body {{ margin:0; padding:0; background:{PAGE_BG}; font-family:{FONT_STACK}; color:#2e4243; }}
-header {{ background:{TEAL_DARK}; color:#fff; padding:20px 32px; }}
-.container {{ max-width:800px; margin:28px auto; padding:0 20px; }}
-.card {{ background:#fff; border-radius:8px; padding:28px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }}
-.badge {{ display:inline-block; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; }}
-.p-high {{ background:#e6f4f1; color:#0d9488; }}
-.p-med {{ background:#fff4e5; color:#d97706; }}
-h1 {{ margin:12px 0 6px 0; font-size:24px; color:{TEAL_DARK}; }}
-.meta {{ font-size:14px; color:#6b7b7b; margin-bottom:18px; }}
-.why-box {{ background:#f2f8f7; border-left:4px solid {ACCENT}; padding:12px 16px; border-radius:0 6px 6px 0; font-style:italic; margin-bottom:24px; font-size:14px; }}
-.grid {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:24px; }}
-.info-item {{ background:#faf9f6; padding:12px 14px; border-radius:6px; }}
-.info-item .label {{ font-size:11px; text-transform:uppercase; color:#8a9a9a; font-weight:bold; }}
-.info-item .val {{ font-size:14px; font-weight:600; color:#2e4243; margin-top:4px; }}
-.summary-box {{ margin-bottom:24px; line-height:1.6; font-size:14px; }}
-.actions {{ border-top:1px solid #e2ece9; padding-top:18px; display:flex; gap:10px; align-items:center; }}
-.btn {{ display:inline-block; padding:9px 16px; border-radius:4px; font-size:13px; font-weight:bold; text-decoration:none; }}
-.btn-primary {{ background:{ACCENT}; color:#fff; }}
-.btn-blue {{ background:#2563eb; color:#fff; }}
-.btn-danger {{ background:#fee2e2; color:#dc2626; }}
-.btn-link {{ color:{ACCENT}; margin-left:auto; text-decoration:none; font-weight:bold; }}
+{_SHARED_HEAD_CSS}
+.detail-card {{
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 32px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  max-width: 860px;
+  margin: 30px auto;
+}}
+.detail-grid {{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 24px 0;
+}}
+.info-box {{
+  background: var(--bg-subtle);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+}}
+.info-label {{ font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }}
+.info-val {{ font-size: 14px; font-weight: 700; color: var(--text-main); margin-top: 4px; }}
+.detail-actions {{
+  display: flex; gap: 10px; align-items: center; padding-top: 20px;
+  border-top: 1px solid var(--border); margin-top: 24px;
+}}
 </style>
+<script>
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+document.documentElement.setAttribute('data-theme', savedTheme);
+</script>
 </head>
 <body>
-<header>
-  <a href="/dashboard" style="color:#a2cfcb; text-decoration:none; font-size:13px;">&larr; Back to Dashboard</a>
+<header class="app-header">
+  <a href="/dashboard" class="brand-title">&larr; Back to Dashboard</a>
 </header>
-<div class="container">
-  <div class="card">
-    <div><span class="badge p-high">{priority}</span> &middot; Score {score}/100 &middot; State: {state.upper()}</div>
-    <h1>{title}</h1>
-    <div class="meta">Organised by {host} &middot; Source: {source}</div>
-    <div class="why-box"><strong>Why recommended:</strong> {why}</div>
-    <div class="grid">
-      <div class="info-item"><div class="label">Location & Format</div><div class="val">{loc} ({mode})</div></div>
-      <div class="info-item"><div class="label">Event Dates</div><div class="val">{start} &rarr; {end}</div></div>
-      <div class="info-item"><div class="label">Student Eligibility</div><div class="val">{eligibility}</div></div>
-      <div class="info-item"><div class="label">Age Restrictions</div><div class="val">{age}</div></div>
-      <div class="info-item"><div class="label">Registration Deadline</div><div class="val">{deadline}</div></div>
-      <div class="info-item"><div class="label">Team Size</div><div class="val">{team}</div></div>
-      <div class="info-item"><div class="label">Prizes</div><div class="val">{prize}</div></div>
-      <div class="info-item"><div class="label">Official URL</div><div class="val"><a href="{url}" target="_blank">Open Link &rarr;</a></div></div>
+<main class="container">
+  <div class="detail-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <span class="badge {'badge-conflict' if is_conflict else 'badge-high'}">{priority}</span>
+      <span style="font-weight:700;">Score: {score}/100 &middot; State: {state.upper()}</span>
     </div>
-    <div class="summary-box">
-      <strong>Summary:</strong>
-      <p>{summary}</p>
+    <h1 style="margin:0 0 8px 0; font-size:24px;">{title}</h1>
+    <div style="color:var(--text-muted); font-size:13px; margin-bottom:18px;">Organised by <strong>{host}</strong> &middot; Source: {source}</div>
+
+    {'<div class="card-conflict-alert" style="margin-bottom:20px;"><strong>⛔ Blackout Conflict:</strong> ' + why + '</div>' if is_conflict else '<div class="card-why" style="margin-bottom:20px;"><strong>Why recommended:</strong> ' + why + '</div>'}
+
+    <div class="detail-grid">
+      <div class="info-box"><div class="info-label">Location &amp; Format</div><div class="info-val">{loc} ({mode.title()})</div></div>
+      <div class="info-box"><div class="info-label">Event Schedule</div><div class="info-val">{start} &rarr; {end}</div></div>
+      <div class="info-box"><div class="info-label">Student Eligibility</div><div class="info-val">{eligibility}</div></div>
+      <div class="info-box"><div class="info-label">Registration Deadline</div><div class="info-val">{deadline}</div></div>
+      <div class="info-box"><div class="info-label">Team Requirements</div><div class="info-val">{team}</div></div>
+      <div class="info-box"><div class="info-label">Prize Pool</div><div class="info-val">{prize}</div></div>
     </div>
-    <div class="actions">
-      <a class="btn btn-primary" href="/track?event_id={eid}&t={track_token}">&#128204; Shortlist / Track</a>
-      <a class="btn btn-blue" href="/applied?event_id={eid}&t={applied_token}">&#127919; Mark Applied</a>
-      <a class="btn btn-danger" href="/reject?event_id={eid}&t={reject_token}">&#125D1; Dismiss</a>
-      <a class="btn-link" href="{url}" target="_blank">Visit Official Page &rarr;</a>
+
+    <div>
+      <h3 style="font-size:15px; margin:0 0 8px 0;">Summary</h3>
+      <p style="font-size:14px; line-height:1.6; color:var(--text-muted); margin:0;">{summary}</p>
+    </div>
+
+    <div class="detail-actions">
+      <a class="btn btn-track" href="/track?event_id={eid}&t={track_token}">📌 Shortlist / Track</a>
+      <a class="btn btn-applied" href="/applied?event_id={eid}&t={applied_token}">🎯 Mark Applied</a>
+      <a class="btn btn-reject" href="/reject?event_id={eid}&t={reject_token}">✕ Dismiss</a>
+      <a class="btn btn-primary-link" href="{url}" target="_blank" rel="noopener" style="margin-left:auto;">Visit Official Page &rarr;</a>
     </div>
   </div>
-</div>
+</main>
 </body>
 </html>"""
 
@@ -805,6 +2656,9 @@ def _handle_action(action, event_id, token):
     return HTMLResponse(_ok_page(action, row), status_code=200)
 
 
+# ---------------------------------------------------------------------------
+# API & PAGE ROUTES
+# ---------------------------------------------------------------------------
 @app.get("/")
 def health():
     return HTMLResponse(_health_page(), status_code=200)
@@ -815,28 +2669,76 @@ def dashboard(filter: Optional[str] = None):
     conn = _get_conn()
     try:
         if filter == "bengaluru":
-            events = [
-                e for e in tracker_store.get_all_events(conn)
-                if str(e["mode"] if "mode" in e.keys() else "").lower() in ("in-person", "hybrid", "offline")
-                and any(p in str(e["location"] if "location" in e.keys() else "").lower() or p in str(e["summary"] if "summary" in e.keys() else "").lower() or p in str(e["title"] if "title" in e.keys() else "").lower() for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr"])
-            ]
+            events = tracker_store.get_events_by_filter(
+                conn, location_keyword="bengaluru", blackout_conflict=0
+            )
+            # Fallback if no specific bengaluru keyword in location alone
+            if not events:
+                all_ev = tracker_store.get_all_events(conn, include_conflicts=False)
+                events = [
+                    e for e in all_ev
+                    if str(e["mode"]).lower() in ("in-person", "hybrid", "offline")
+                    and any(
+                        p in str(e["location"]).lower()
+                        or p in str(e["summary"]).lower()
+                        or p in str(e["title"]).lower()
+                        for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr"]
+                    )
+                ]
+        elif filter == "eligible":
+            events = tracker_store.get_events_by_filter(
+                conn, eligibility="ELIGIBLE", blackout_conflict=0, date_status="verified"
+            )
         elif filter == "free_weekend":
-            events = [e for e in tracker_store.get_all_events(conn) if "Free & Weekend" in str(e["why"] if "why" in e.keys() else "")]
+            events = [
+                e for e in tracker_store.get_all_events(conn, include_conflicts=False)
+                if "Free & Weekend" in str(e["why"] or "")
+            ]
         elif filter == "high":
-            events = tracker_store.get_events_by_filter(conn, priority="HIGH PRIORITY")
+            events = tracker_store.get_events_by_filter(
+                conn, priority="HIGH PRIORITY", blackout_conflict=0
+            )
         elif filter == "unverified":
-            events = tracker_store.get_events_by_filter(conn, eligibility="UNKNOWN")
+            events = [
+                e for e in tracker_store.get_all_events(conn, include_conflicts=True)
+                if e["date_status"] == "uncertain" or str(e["eligibility"]).upper() == "UNKNOWN"
+            ]
         elif filter == "tracked":
             events = tracker_store.get_events_by_filter(conn, state="tracked")
         elif filter == "applied":
             events = tracker_store.get_events_by_filter(conn, state="applied")
-        elif filter == "deadlines":
-            events = tracker_store.get_upcoming_deadlines(conn, limit=50)
+        elif filter == "excluded":
+            events = tracker_store.get_events_by_filter(conn, blackout_conflict=1)
+        elif filter == "closing_soon":
+            events = tracker_store.get_upcoming_deadlines(conn, limit=50, exclude_conflicts=True)
         else:
-            events = tracker_store.get_all_events(conn)
+            # Default discovery view: eligible/available events (excludes blackout conflicts)
+            events = tracker_store.get_all_events(conn, include_conflicts=False)
     finally:
         conn.close()
     return HTMLResponse(_dashboard_page(events, current_filter=filter), status_code=200)
+
+
+@app.get("/calendar")
+def calendar_view():
+    conn = _get_conn()
+    try:
+        blackouts = tracker_store.get_blackout_dates(conn)
+    finally:
+        conn.close()
+    return HTMLResponse(_calendar_page(blackouts), status_code=200)
+
+
+@app.get("/sources")
+def sources_view():
+    conn = _get_conn()
+    try:
+        sources = tracker_store.get_discovery_sources(conn)
+        last_scan = tracker_store.get_last_discovery_scan(conn)
+        recent_scans = tracker_store.get_recent_discovery_scans(conn, limit=10)
+    finally:
+        conn.close()
+    return HTMLResponse(_sources_page(sources, last_scan, recent_scans), status_code=200)
 
 
 @app.get("/track")
@@ -876,17 +2778,34 @@ def event_detail(event_id: str):
     return HTMLResponse(_event_detail_page(row), status_code=200)
 
 
+# ---------------------------------------------------------------------------
+# REST JSON APIS
+# ---------------------------------------------------------------------------
 @app.get("/api/events")
 def api_events(
     priority: Optional[str] = None,
     state: Optional[str] = None,
     eligibility: Optional[str] = None,
     search: Optional[str] = None,
+    mode: Optional[str] = None,
+    blackout_conflict: Optional[int] = None,
+    date_status: Optional[str] = None,
+    location: Optional[str] = None,
+    order_by: Optional[str] = None,
 ):
     conn = _get_conn()
     try:
         rows = tracker_store.get_events_by_filter(
-            conn, priority=priority, state=state, eligibility=eligibility, search=search
+            conn,
+            priority=priority,
+            state=state,
+            eligibility=eligibility,
+            search=search,
+            mode=mode,
+            blackout_conflict=blackout_conflict,
+            date_status=date_status,
+            location_keyword=location,
+            order_by=order_by,
         )
         return [dict(r) for r in rows]
     finally:
@@ -897,7 +2816,157 @@ def api_events(
 def api_deadlines(limit: int = 15):
     conn = _get_conn()
     try:
-        rows = tracker_store.get_upcoming_deadlines(conn, limit=limit)
+        rows = tracker_store.get_upcoming_deadlines(conn, limit=limit, exclude_conflicts=True)
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+@app.get("/api/dashboard-stats")
+def api_dashboard_stats():
+    conn = _get_conn()
+    try:
+        stats = tracker_store.get_dashboard_stats(conn)
+        return stats
+    finally:
+        conn.close()
+
+
+@app.get("/api/blackouts")
+def api_get_blackouts(category: Optional[str] = None, enabled_only: bool = False):
+    conn = _get_conn()
+    try:
+        rows = tracker_store.get_blackout_dates(conn, enabled_only=enabled_only, category=category)
+        return rows
+    finally:
+        conn.close()
+
+
+@app.post("/api/blackouts")
+def api_create_blackout(data: BlackoutCreate):
+    conn = _get_conn()
+    try:
+        new_id = tracker_store.add_blackout_date(
+            conn,
+            title=data.title,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            category=data.category,
+            reason=data.reason,
+            enabled=1 if data.enabled else 0,
+        )
+        return {"status": "ok", "id": new_id}
+    finally:
+        conn.close()
+
+
+@app.put("/api/blackouts/{blackout_id}")
+def api_update_blackout(blackout_id: int, data: BlackoutUpdate):
+    conn = _get_conn()
+    try:
+        ok = tracker_store.update_blackout_date(
+            conn,
+            blackout_id=blackout_id,
+            title=data.title,
+            start_date=data.start_date,
+            end_date=data.end_date,
+            category=data.category,
+            reason=data.reason,
+            enabled=1 if data.enabled else 0,
+        )
+        if not ok:
+            raise HTTPException(status_code=404, detail="Blackout date not found")
+        return {"status": "ok", "id": blackout_id}
+    finally:
+        conn.close()
+
+
+@app.delete("/api/blackouts/{blackout_id}")
+def api_delete_blackout(blackout_id: int):
+    conn = _get_conn()
+    try:
+        ok = tracker_store.delete_blackout_date(conn, blackout_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Blackout date not found")
+        return {"status": "ok", "deleted_id": blackout_id}
+    finally:
+        conn.close()
+
+
+@app.post("/api/blackouts/{blackout_id}/toggle")
+def api_toggle_blackout(blackout_id: int):
+    conn = _get_conn()
+    try:
+        ok = tracker_store.toggle_blackout_date(conn, blackout_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Blackout date not found")
+        return {"status": "ok", "toggled_id": blackout_id}
+    finally:
+        conn.close()
+
+
+@app.post("/api/action")
+def api_action(req: ActionRequest):
+    if not req.event_id or req.action not in ("track", "applied", "reject"):
+        raise HTTPException(status_code=400, detail="Invalid request parameters")
+
+    if req.token and not tracker_store.verify_action(req.action, req.event_id, req.token):
+        raise HTTPException(status_code=403, detail="Invalid action token")
+
+    conn = _get_conn()
+    try:
+        result, row = tracker_store.apply_action(conn, req.action, req.event_id)
+        if result == "unknown_event":
+            raise HTTPException(status_code=404, detail="Unknown event")
+        return {
+            "status": "ok",
+            "result": result,
+            "event_id": req.event_id,
+            "state": row["state"] if row else None,
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/api/sources")
+def api_get_sources():
+    conn = _get_conn()
+    try:
+        sources = tracker_store.get_discovery_sources(conn)
+        return sources
+    finally:
+        conn.close()
+
+
+@app.post("/api/sources/{source_key}/toggle")
+def api_toggle_source(source_key: str):
+    conn = _get_conn()
+    try:
+        new_state = tracker_store.toggle_discovery_source(conn, source_key)
+        if new_state is None:
+            raise HTTPException(status_code=404, detail="Discovery source not found")
+        return {"status": "ok", "source_key": source_key, "enabled": bool(new_state)}
+    finally:
+        conn.close()
+
+
+@app.post("/api/scan")
+def api_run_scan(req: Optional[ScanRequest] = None):
+    try:
+        engine = DiscoveryEngine(db_path=DB_PATH)
+        source_keys = req.sources if req else None
+        force_all = req.force_all if req else False
+        result = engine.run_scan(source_keys=source_keys, force_all=force_all)
+        return {"status": "ok", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/scans")
+def api_get_scans(limit: int = 10):
+    conn = _get_conn()
+    try:
+        scans = tracker_store.get_recent_discovery_scans(conn, limit=limit)
+        return scans
     finally:
         conn.close()
