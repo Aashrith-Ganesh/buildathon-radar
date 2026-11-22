@@ -254,3 +254,31 @@ class TestSignVerify:
     def test_wrong_secret_rejected(self):
         token = tracker_store.sign_action("track", "e1", secret="s3cr3t")
         assert not tracker_store.verify_action("track", "e1", token, secret="different")
+
+
+class TestDeleteEventsBeforeDate:
+    def test_deletes_events_starting_before_cutoff_and_cleans_action_log(self, tmp_path):
+        conn = tracker_store.connect(db_path(tmp_path))
+        tracker_store.upsert_seen(conn, [
+            make_item("past1", event_start="2026-10-30", event_end="2026-12-04"),
+            make_item("past2", event_start="2026-11-15", event_end="2026-11-30"),
+            make_item("current", event_start="2026-11-22", event_end="2026-11-25"),
+            make_item("future", event_start="2026-12-01", event_end="2026-12-02"),
+        ])
+        tracker_store.apply_action(conn, "track", "past1")
+        tracker_store.apply_action(conn, "applied", "current")
+
+        deleted_count = tracker_store.delete_events_before_date(conn, "2026-11-22")
+        assert deleted_count == 2
+
+        remaining = [r["event_id"] for r in tracker_store.get_all_events(conn)]
+        assert "current" in remaining
+        assert "future" in remaining
+        assert "past1" not in remaining
+        assert "past2" not in remaining
+
+        # Verify action log for past1 was also pruned
+        logs = conn.execute("SELECT * FROM action_log WHERE event_id = 'past1'").fetchall()
+        assert len(logs) == 0
+        current_logs = conn.execute("SELECT * FROM action_log WHERE event_id = 'current'").fetchall()
+        assert len(current_logs) == 1

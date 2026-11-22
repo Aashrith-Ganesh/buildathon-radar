@@ -67,6 +67,10 @@ def main():
     backup_parser = subparsers.add_parser("backup", help="Create a timestamped backup of the database")
     backup_parser.add_argument("--dest", default="backups", help="Destination folder")
 
+    # prune
+    prune_parser = subparsers.add_parser("prune", help="Remove events before a cutoff date")
+    prune_parser.add_argument("--before", default="2026-11-22", help="Cutoff date YYYY-MM-DD (defaults to 2026-11-22)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -191,6 +195,14 @@ def main():
             print(f"Database backed up to: {backup_path}")
         else:
             print(f"Database {db_file} does not exist yet; nothing to backup.")
+
+    elif args.command == "prune":
+        conn = tracker_store.connect()
+        try:
+            cnt = tracker_store.delete_events_before_date(conn, args.before)
+            print(f"Removed {cnt} events starting before {args.before}.")
+        finally:
+            conn.close()
 
 
 if __name__ == "__main__":

@@ -326,7 +326,7 @@ def get_all_events(conn, min_date=None):
         return conn.execute(
             """
             SELECT * FROM events
-            WHERE COALESCE(event_end, event_start, '9999-12-31') > ?
+            WHERE COALESCE(event_start, event_end, '9999-12-31') >= ?
             ORDER BY score DESC, updated_at DESC
             """,
             (min_date,),
@@ -338,7 +338,7 @@ def get_events_by_filter(conn, priority=None, state=None, eligibility=None, sear
     query = "SELECT * FROM events WHERE 1=1"
     params = []
     if min_date:
-        query += " AND COALESCE(event_end, event_start, '9999-12-31') > ?"
+        query += " AND COALESCE(event_start, event_end, '9999-12-31') >= ?"
         params.append(min_date)
     if priority:
         query += " AND priority = ?"
@@ -357,6 +357,29 @@ def get_events_by_filter(conn, priority=None, state=None, eligibility=None, sear
     query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC LIMIT ?"
     params.append(limit)
     return conn.execute(query, params).fetchall()
+
+
+def delete_events_before_date(conn, cutoff_date: str) -> int:
+    """Deletes events starting before cutoff_date (YYYY-MM-DD) and their associated action logs.
+
+    Returns the number of events deleted.
+    """
+    with conn:
+        conn.execute(
+            """
+            DELETE FROM action_log
+            WHERE event_id IN (
+                SELECT event_id FROM events
+                WHERE COALESCE(event_start, event_end) < ?
+            )
+            """,
+            (cutoff_date,),
+        )
+        cur = conn.execute(
+            "DELETE FROM events WHERE COALESCE(event_start, event_end) < ?",
+            (cutoff_date,),
+        )
+        return cur.rowcount
 
 
 def get_upcoming_deadlines(conn, limit=10, min_date=None):
