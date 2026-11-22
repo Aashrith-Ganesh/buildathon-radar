@@ -126,7 +126,7 @@ def _page(headline, lines, event_url=None, accent=ACCENT):
   --accent: #14b8a6;
 }}
 * {{ box-sizing: border-box; }}
-body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:{FONT_STACK}; color:var(--text-main); display:flex; justify-content:center; align-items:center; min-height:100vh; }}
+body {{ margin:0; padding:0; background:var(--bg-canvas); font-family:{FONT_STACK}; color:var(--text-main); display:flex; justify-content:center; align-items:center; min-height:100%; }}
 .card {{ background:var(--bg-card); border-radius:12px; border:1px solid var(--border); padding:36px; max-width:540px; width:90%; box-shadow:0 4px 12px rgba(0,0,0,0.06); text-align:center; }}
 h1 {{ font-size:20px; font-weight:700; margin-top:0; margin-bottom:14px; color:var(--text-main); }}
 p {{ font-size:14px; color:var(--text-muted); line-height:1.6; margin:8px 0; }}
@@ -134,7 +134,7 @@ p {{ font-size:14px; color:var(--text-muted); line-height:1.6; margin:8px 0; }}
 .back-link {{ display:inline-block; margin-top:16px; color:var(--accent); font-size:13px; text-decoration:none; font-weight:600; }}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 </script>
 </head>
@@ -150,10 +150,175 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 
 
 def _health_page():
-    return _page("Buildathon Radar tracker is running.", [
-        "This is a liveness check only. No event data is exposed here.",
-        "<br>Access the interactive local dashboard at: <a href='/dashboard' style='color:#0d9488; font-weight:bold;'>Local Dashboard</a> | <a href='/list' style='color:#0d9488;'>Read-only List</a>",
-    ])
+    return """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buildathon Radar - System Running</title>
+<script>if (!window.location.search.includes("health")) { window.location.href = "/dashboard"; }</script>
+<style>
+:root {
+  --bg-canvas: #09090b;
+  --bg-card: #121215;
+  --text-main: #fafafa;
+  --text-muted: #a1a1aa;
+  --border: #27272a;
+  --accent: #10b981;
+}
+[data-theme="light"] {
+  --bg-canvas: #fafafa;
+  --bg-card: #ffffff;
+  --text-main: #09090b;
+  --text-muted: #52525b;
+  --border: #e4e4e7;
+  --accent: #059669;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-canvas);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  color: var(--text-main);
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.landing-wrap {
+  width: 100%;
+  padding: 48px 16px;
+  display: flex;
+  justify-content: center;
+}
+.landing-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 44px 32px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4);
+  text-align: center;
+}
+.radar-pulse-wrap {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  position: relative;
+}
+.radar-pulse-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0.35;
+  animation: radarPing 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes radarPing {
+  75%, 100% { transform: scale(1.4); opacity: 0; }
+}
+.status-pill-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 18px;
+}
+.status-pill-running::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  display: inline-block;
+}
+.landing-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.4px;
+}
+.landing-desc {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+}
+.btn-launch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.btn-launch:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+.secondary-links {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 18px;
+}
+.secondary-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.secondary-links a:hover {
+  color: var(--text-main);
+  text-decoration: underline;
+}
+</style>
+<script>
+const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+document.documentElement.setAttribute('data-theme', savedTheme);
+</script>
+</head>
+<body>
+<div class="landing-wrap">
+  <div class="landing-card">
+    <div class="radar-pulse-wrap">
+      <div class="radar-pulse-ring"></div>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="M12 2v20"/><path d="M2 12h20"/></svg>
+    </div>
+    <div class="status-pill-running">Buildathon Radar is running</div>
+    <h1 class="landing-title">Student Opportunity Engine</h1>
+    <p class="landing-desc">Personalized AI/SWE buildathon discovery for high school students in Bengaluru with blackout-aware calendar filtering.</p>
+    <a class="btn-launch" href="/dashboard">Launch Interactive Dashboard &rarr;</a>
+    <div class="secondary-links">
+      <a href="/calendar">Blackout Calendar</a>
+      <span>&middot;</span>
+      <a href="/sources">27 Live Sources</a>
+      <span>&middot;</span>
+      <a href="/list">Read-only List</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>"""
 
 
 def _malformed_page():
@@ -317,7 +482,7 @@ _SHARED_HEAD_CSS = f"""
   --text-muted: #475569;
   --text-dim: #94a3b8;
   --border: #e2e8f0;
-  --border-subtle: #cbd5e1;
+  --border-subtle: #d1d5db;
 
   /* Primary Brand - Emerald / Teal Precision */
   --teal-primary: #059669;
@@ -329,7 +494,7 @@ _SHARED_HEAD_CSS = f"""
   --indigo-light: #eef2ff;
   --emerald-primary: #059669;
   --emerald-light: #ecfdf5;
-  --rose-primary: #e11d48;
+  --rose-primary: #f43f5e;
   --rose-light: #fff1f2;
   --amber-primary: #d97706;
   --amber-light: #fffbeb;
@@ -395,7 +560,7 @@ body {{
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   letter-spacing: -0.011em;
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
 }}
@@ -1535,18 +1700,18 @@ tr:hover td {{ background: var(--bg-hover); }}
 <script>
 // Theme support (light/dark system sync & persistence)
 function toggleTheme() {{
-  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   const nxt = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nxt);
   localStorage.setItem('radar_theme', nxt);
   updateThemeBtn();
 }}
 function updateThemeBtn() {{
-  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const btn = document.getElementById('themeToggleBtn');
   if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
 }}
-const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 window.addEventListener('DOMContentLoaded', updateThemeBtn);
 
@@ -1982,18 +2147,18 @@ input:checked + .slider:before {{ transform: translateX(16px); }}
 </style>
 <script>
 function toggleTheme() {{
-  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   const nxt = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nxt);
   localStorage.setItem('radar_theme', nxt);
   updateThemeBtn();
 }}
 function updateThemeBtn() {{
-  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const btn = document.getElementById('themeToggleBtn');
   if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
 }}
-const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 window.addEventListener('DOMContentLoaded', updateThemeBtn);
 
@@ -2381,18 +2546,18 @@ input:checked + .slider:before {{ transform: translateX(16px); }}
 </style>
 <script>
 function toggleTheme() {{
-  const cur = document.documentElement.getAttribute('data-theme') || 'light';
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   const nxt = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nxt);
   localStorage.setItem('radar_theme', nxt);
   updateThemeBtn();
 }}
 function updateThemeBtn() {{
-  const theme = document.documentElement.getAttribute('data-theme') || 'light';
+  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const btn = document.getElementById('themeToggleBtn');
   if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
 }}
-const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 window.addEventListener('DOMContentLoaded', updateThemeBtn);
 
@@ -2586,7 +2751,7 @@ def _event_detail_page(row):
 }}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const savedTheme = localStorage.getItem('radar_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 </script>
 </head>
