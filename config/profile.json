@@ -17,17 +17,41 @@
     {
       "tier": "Bengaluru, Karnataka",
       "weight": 30,
-      "patterns": ["bengaluru", "bangalore", "karnataka", "koramangala", "indiranagar", "hstr", "whitefield"]
+      "patterns": [
+        "bengaluru",
+        "bangalore",
+        "karnataka",
+        "koramangala",
+        "indiranagar",
+        "hstr",
+        "whitefield"
+      ]
     },
     {
       "tier": "Other India",
       "weight": 20,
-      "patterns": ["india", "delhi", "mumbai", "hyderabad", "pune", "chennai", "gurgaon", "noida", "kolkata"]
+      "patterns": [
+        "india",
+        "delhi",
+        "mumbai",
+        "hyderabad",
+        "pune",
+        "chennai",
+        "gurgaon",
+        "noida",
+        "kolkata"
+      ]
     },
     {
       "tier": "International Online",
       "weight": 14,
-      "patterns": ["online", "virtual", "remote", "global", "worldwide"]
+      "patterns": [
+        "online",
+        "virtual",
+        "remote",
+        "global",
+        "worldwide"
+      ]
     },
     {
       "tier": "International In-Person",
@@ -50,39 +74,94 @@
     "high_relevance": {
       "weight": 35,
       "keywords": [
-        "artificial intelligence", "ai", "machine learning", "ml", "generative ai",
-        "genai", "agentic ai", "ai agents", "llm", "large language model",
-        "deep learning", "neural network", "rag"
+        "artificial intelligence",
+        "ai",
+        "machine learning",
+        "ml",
+        "generative ai",
+        "genai",
+        "agentic ai",
+        "ai agents",
+        "llm",
+        "large language model",
+        "deep learning",
+        "neural network",
+        "rag"
       ]
     },
     "medium_relevance": {
       "weight": 25,
       "keywords": [
-        "software engineering", "fintech", "payments", "quantum computing", "quantum",
-        "robotics", "developer tools", "devtools", "startups", "product building",
-        "open innovation", "automation", "api", "cloud", "web3", "cybersecurity"
+        "software engineering",
+        "fintech",
+        "payments",
+        "quantum computing",
+        "quantum",
+        "robotics",
+        "developer tools",
+        "devtools",
+        "startups",
+        "product building",
+        "open innovation",
+        "automation",
+        "api",
+        "cloud",
+        "web3",
+        "cybersecurity"
       ]
     },
     "low_relevance": {
       "weight": 10,
       "keywords": [
-        "general tech", "coding", "design", "hackathon", "innovation", "problem solving"
+        "general tech",
+        "coding",
+        "design",
+        "hackathon",
+        "innovation",
+        "problem solving"
       ]
     }
   },
   "eligibility_rules": {
     "explicit_inclusions": [
-      "class 11", "class 12", "11th grade", "12th grade", "high school", "highschool",
-      "school student", "k-12", "secondary school", "junior college", "open to all",
-      "anyone can participate", "all students", "minors welcome", "under 18",
-      "all developers", "open competition", "open innovation challenge", "external school students",
-      "no age limit", "no restriction", "everybody"
+      "class 11",
+      "class 12",
+      "11th grade",
+      "12th grade",
+      "high school",
+      "highschool",
+      "school student",
+      "k-12",
+      "secondary school",
+      "junior college",
+      "open to all",
+      "anyone can participate",
+      "all students",
+      "minors welcome",
+      "under 18",
+      "all developers",
+      "open competition",
+      "open innovation challenge",
+      "external school students",
+      "no age limit",
+      "no restriction",
+      "everybody"
     ],
     "explicit_exclusions": [
-      "18+ only", "must be 18", "must be at least 18", "university students only",
-      "college students only", "enrolled undergraduate", "undergraduates only",
-      "b.tech only", "m.tech only", "working professionals only", "employees only",
-      "corporate employees only", "must be 21", "strictly 18"
+      "18+ only",
+      "must be 18",
+      "must be at least 18",
+      "university students only",
+      "college students only",
+      "enrolled undergraduate",
+      "undergraduates only",
+      "b.tech only",
+      "m.tech only",
+      "working professionals only",
+      "employees only",
+      "corporate employees only",
+      "must be 21",
+      "strictly 18"
     ],
     "allow_college_with_external_students": true
   },
@@ -95,16 +174,93 @@
   },
   "availability": {
     "blackout_dates": [
-      "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-06"
+      "2026-05-06",
+      "2026-06-07",
+      "2026-06-28",
+      "2026-07-05",
+      "2026-07-19",
+      "2026-07-26",
+      "2026-08-09",
+      "2026-08-19",
+      "2026-08-30",
+      "2026-09-06",
+      "2026-09-20",
+      "2026-09-27",
+      "2026-10-11",
+      "2026-10-18",
+      "2026-11-15",
+      "2026-11-26",
+      "2026-11-27",
+      "2026-11-28",
+      "2026-11-29",
+      "2026-11-30",
+      "2026-12-06",
+      "2026-12-10",
+      "2026-12-11",
+      "2026-12-12",
+      "2026-12-13",
+      "2026-12-14",
+      "2026-12-15",
+      "2026-12-16",
+      "2026-12-20",
+      "2026-12-27",
+      "2027-01-10",
+      "2027-01-17",
+      "2027-01-31",
+      "2027-02-08",
+      "2027-02-09",
+      "2027-02-10",
+      "2027-02-11",
+      "2027-02-12",
+      "2027-02-13",
+      "2027-02-14",
+      "2027-02-15",
+      "2027-02-16",
+      "2027-02-17",
+      "2027-02-18",
+      "2027-02-19",
+      "2027-02-20",
+      "2027-02-21",
+      "2027-02-22",
+      "2027-02-23",
+      "2027-02-24",
+      "2027-02-25",
+      "2027-02-26",
+      "2027-02-27",
+      "2027-02-28"
     ],
-    "description": "Student is unavailable on 26th-30th Nov 2026 and 6th Dec 2026"
+    "description": "Updated personal blackout calendar including personal commitments, ALLEN JEE test dates, and Feb 2027 examination periods"
   },
   "cost_and_timing_preferences": {
     "priority_hierarchy": [
-      {"tier": 1, "cost": "free", "timing": "weekend", "bonus": 15, "label": "Free & Weekend (Top Priority)"},
-      {"tier": 2, "cost": "paid", "timing": "weekend", "bonus": 8, "label": "Paid & Weekend"},
-      {"tier": 3, "cost": "free", "timing": "weekday", "bonus": 4, "label": "Free & Weekday"},
-      {"tier": 4, "cost": "paid", "timing": "weekday", "bonus": 0, "label": "Paid & Weekday"}
+      {
+        "tier": 1,
+        "cost": "free",
+        "timing": "weekend",
+        "bonus": 15,
+        "label": "Free & Weekend (Top Priority)"
+      },
+      {
+        "tier": 2,
+        "cost": "paid",
+        "timing": "weekend",
+        "bonus": 8,
+        "label": "Paid & Weekend"
+      },
+      {
+        "tier": 3,
+        "cost": "free",
+        "timing": "weekday",
+        "bonus": 4,
+        "label": "Free & Weekday"
+      },
+      {
+        "tier": 4,
+        "cost": "paid",
+        "timing": "weekday",
+        "bonus": 0,
+        "label": "Paid & Weekday"
+      }
     ]
   },
   "tier_thresholds": {

@@ -59,12 +59,14 @@ def get_database_summary(db_path: Optional[str] = None) -> Dict[str, Any]:
         by_source = dict(conn.execute(
             "SELECT source, COUNT(*) FROM events GROUP BY source"
         ).fetchall())
+        blackout_excluded = conn.execute("SELECT COUNT(*) FROM events WHERE blackout_conflict = 1").fetchone()[0]
         return {
             "total_events": total,
             "by_priority": by_priority,
             "by_state": by_state,
             "by_eligibility": by_eligibility,
             "by_source": by_source,
+            "blackout_excluded": blackout_excluded,
         }
     finally:
         conn.close()
@@ -289,24 +291,26 @@ def detect_overlapping_dates(db_path: Optional[str] = None) -> List[Dict[str, An
         conn.close()
 
 
-def recommend_events(db_path: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+def recommend_events(db_path: Optional[str] = None, limit: int = 10, exclude_conflicts: bool = False) -> List[Dict[str, Any]]:
     """9. Recommend suitable events ranked for an Indian high school student."""
     conn = _get_connection(db_path)
     try:
-        rows = conn.execute(
-            """
+        query = """
             SELECT * FROM events
             WHERE state != 'rejected'
               AND priority != 'INELIGIBLE'
+        """
+        if exclude_conflicts:
+            query += " AND blackout_conflict = 0"
+        query += """
             ORDER BY
               CASE WHEN priority = 'HIGH PRIORITY' THEN 1
                    WHEN priority = 'MEDIUM PRIORITY' THEN 2
                    ELSE 3 END,
               score DESC
             LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+        """
+        rows = conn.execute(query, (limit,)).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()

@@ -279,9 +279,7 @@ def assess_schedule_and_blackout(
 
     # Blackout dates from profile
     avail = profile.get("availability", {})
-    blackout_strs = avail.get("blackout_dates", [
-        "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30", "2026-12-06"
-    ])
+    blackout_strs = avail.get("blackout_dates", [])
     blackout_dates = set()
     from datetime import datetime as dt_cls, timedelta as td_cls
     for b in blackout_strs:
@@ -291,25 +289,26 @@ def assess_schedule_and_blackout(
             pass
 
     if not start_str:
-        return "WEEKEND", False, "Flexible schedule"
+        return "UNKNOWN", False, "⚠️ Dates Unverified: Schedule not published; cannot confirm availability."
 
     try:
         s_date = dt_cls.strptime(start_str[:10], "%Y-%m-%d").date()
         e_date = dt_cls.strptime(end_str[:10], "%Y-%m-%d").date()
+        if e_date < s_date:
+            s_date, e_date = e_date, s_date
 
-        # Check date overlap with blackout window
+        # Check date overlap with blackout window (hard exclusion for any overlap)
         has_blackout_overlap = False
+        conflicting_dates = []
         cur = s_date
         while cur <= e_date:
             if cur in blackout_dates:
                 has_blackout_overlap = True
-                break
+                conflicting_dates.append(cur.strftime("%Y-%m-%d"))
             cur += td_cls(days=1)
 
         duration_days = (e_date - s_date).days + 1
-        # In-person events during blackout dates are hard conflicts (student cannot attend)
-        # Short online hackathons (<= 4 days) during blackout dates are also direct conflicts
-        is_direct_conflict = has_blackout_overlap and (mode == "in-person" or duration_days <= 4)
+        is_direct_conflict = has_blackout_overlap
 
         # Check weekend (Saturday or Sunday)
         is_weekend = False
@@ -327,16 +326,17 @@ def assess_schedule_and_blackout(
         timing = "WEEKEND" if is_weekend else "WEEKDAY"
 
         if is_direct_conflict:
-            explanation = "⚠️ Blackout Conflict: Student unavailable on Nov 26-30 / Dec 6"
-        elif has_blackout_overlap:
-            explanation = f"{timing.title()} (Note: spans blackout dates Nov 26-30 / Dec 6)"
+            conflict_summary = ", ".join(conflicting_dates[:3])
+            if len(conflicting_dates) > 3:
+                conflict_summary += f" (+{len(conflicting_dates) - 3} more)"
+            explanation = f"⚠️ Blackout Conflict: Student unavailable on {conflict_summary}"
         else:
             explanation = f"{timing.title()} schedule"
 
         return timing, is_direct_conflict, explanation
 
     except Exception:
-        return "WEEKDAY", False, "Standard schedule"
+        return "UNKNOWN", False, "⚠️ Dates Unverified: Could not parse event schedule."
 
 
 def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -490,7 +490,7 @@ def filter_and_rank_events(items: List[Dict[str, Any]], max_picks: int = 15) -> 
 
     week_note = (
         f"Curated {len(picks)} opportunities: Free & Weekend events prioritized; "
-        f"Nov 26-30 & Dec 6 blackout dates avoided."
+        f"personal commitments, test dates and examination blackout periods strictly avoided."
     )
 
     return {

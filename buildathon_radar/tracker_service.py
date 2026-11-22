@@ -470,232 +470,185 @@ h2 .count {{ color:#8a9a9a; font-weight:normal; }}
 # ---------------------------------------------------------------------------
 # SHARED MODERN CSS FOR DASHBOARD & CALENDAR
 # ---------------------------------------------------------------------------
-_SHARED_HEAD_CSS = f"""
-:root {{
-  /* Core surfaces - Light Mode (Clean Slate & Zinc) */
-  --bg-canvas: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-subtle: #f1f5f9;
-  --bg-hover: #f8fafc;
-  --bg-header: #042f2e;
-  --text-main: #0f172a;
-  --text-muted: #475569;
-  --text-dim: #94a3b8;
-  --border: #e2e8f0;
-  --border-subtle: #d1d5db;
+_SHARED_HEAD_CSS = """
+:root {
+  --bg-page: #0a0a0a;
+  --bg-card: #0d0d0d;
+  --bg-card-hover: rgba(255, 255, 255, 0.04);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --text-primary: #ededed;
+  --text-muted: #a1a1aa;
+  --text-dim: #71717a;
+  --teal-accent: #5eead4;
+  --gold-prize: #e8b75b;
+  --green-score: #4ade80;
+  --orange-featured: #fb923c;
+  --rose-conflict: #fda4af;
+  --rose-border: rgba(244, 63, 94, 0.3);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Primary Brand - Emerald / Teal Precision */
-  --teal-primary: #059669;
-  --teal-hover: #047857;
-  --teal-light: #ecfdf5;
-
-  /* Accent states & Semantic highlights */
-  --indigo-primary: #4f46e5;
-  --indigo-light: #eef2ff;
-  --emerald-primary: #059669;
-  --emerald-light: #ecfdf5;
-  --rose-primary: #f43f5e;
-  --rose-light: #fff1f2;
-  --amber-primary: #d97706;
-  --amber-light: #fffbeb;
-  --purple-primary: #7c3aed;
-  --purple-light: #f5f3ff;
-
-  /* Elevation & Geometry */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-}}
-
-[data-theme="dark"] {{
-  --bg-canvas: #090d16;
-  --bg-card: #111827;
-  --bg-subtle: #1e293b;
-  --bg-hover: #172033;
-  --bg-header: #051419;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
-  --border: #1e293b;
-  --border-subtle: #334155;
-
+  /* Legacy variable mappings for other pages */
+  --bg-canvas: var(--bg-page);
+  --bg-subtle: #141414;
+  --bg-hover: var(--bg-card-hover);
+  --bg-header: rgba(10, 10, 10, 0.85);
+  --text-main: var(--text-primary);
+  --border: var(--border-color);
   --teal-primary: #10b981;
   --teal-hover: #34d399;
-  --teal-light: rgba(16, 185, 129, 0.12);
-
+  --teal-light: rgba(94, 234, 212, 0.1);
   --indigo-primary: #818cf8;
-  --indigo-light: rgba(99, 102, 241, 0.15);
+  --indigo-light: rgba(129, 140, 248, 0.15);
   --emerald-primary: #34d399;
   --emerald-light: rgba(16, 185, 129, 0.15);
-  --rose-primary: #fb7185;
+  --rose-primary: #f43f5e;
   --rose-light: rgba(244, 63, 94, 0.15);
   --amber-primary: #fbbf24;
-  --amber-light: rgba(245, 158, 11, 0.15);
-  --purple-primary: #a78bfa;
-  --purple-light: rgba(139, 92, 246, 0.15);
-
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --amber-light: rgba(251, 191, 36, 0.15);
   --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
-}}
+  --radius-sm: 6px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+}
 
-* {{ box-sizing: border-box; }}
-html, body {{
+[data-theme="light"] {
+  --bg-page: #fafafa;
+  --bg-card: #ffffff;
+  --bg-card-hover: rgba(0, 0, 0, 0.02);
+  --border-color: #e4e4e7;
+  --border-subtle: #f4f4f5;
+  --text-primary: #09090b;
+  --text-muted: #52525b;
+  --text-dim: #71717a;
+  --teal-accent: #059669;
+  --gold-prize: #d97706;
+  --green-score: #16a34a;
+  --orange-featured: #ea580c;
+  --rose-conflict: #e11d48;
+  --bg-canvas: #fafafa;
+  --bg-subtle: #f4f4f5;
+  --bg-header: rgba(255, 255, 255, 0.9);
+  --text-main: #09090b;
+  --border: #e4e4e7;
+}
+
+* { box-sizing: border-box; }
+html, body {
   overflow-x: clip;
-}}
-body {{
+}
+body {
   margin: 0;
   padding: 0;
-  background: var(--bg-canvas);
-  font-family: var(--font-stack);
-  color: var(--text-main);
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  letter-spacing: -0.011em;
+  letter-spacing: -0.015em;
   min-height: 100%;
   display: flex;
   flex-direction: column;
-}}
+}
 
-/* Accessibility: Skip Link & Focus */
-.skip-link {{
+/* Accessibility: Skip Link & Focus Rings */
+.skip-link {
   position: absolute;
   top: -40px;
   left: 16px;
-  background: var(--teal-primary);
-  color: #fff;
+  background: var(--teal-accent);
+  color: #0a0a0a;
   padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   font-weight: 700;
   text-decoration: none;
   z-index: 1000;
   transition: top 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}}
-.skip-link:focus {{ top: 16px; }}
-:focus-visible {{
-  outline: 2px solid var(--teal-primary);
+}
+.skip-link:focus { top: 16px; }
+:focus-visible {
+  outline: 2px solid var(--teal-accent);
   outline-offset: 2px;
-}}
+}
 
-/* App Header - Frosted Glass & Polished Nav */
-header.app-header {{
-  background: rgba(4, 47, 46, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: #fff;
-  padding: 14px 28px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+/* Header - Exact hackathonradar.com sticky navbar */
+header.app-header {
   position: sticky;
   top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-}}
-[data-theme="dark"] header.app-header {{
-  background: rgba(5, 20, 25, 0.92);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}}
-.brand-group {{ display: flex; align-items: center; gap: 14px; }}
-.brand-title {{
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  margin: 0;
-  color: #ffffff;
-  text-decoration: none;
+  z-index: 50;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 12px 24px;
+}
+.header-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand-link {
   display: flex;
   align-items: center;
   gap: 8px;
-}}
-.brand-badge {{
-  font-size: 11px;
-  background: rgba(16, 185, 129, 0.2);
-  color: #a7f3d0;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  padding: 2px 9px;
-  border-radius: 9999px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}}
-.brand-badge::before {{
-  content: "";
-  width: 6px;
-  height: 6px;
-  background: #10b981;
-  border-radius: 50%;
-  display: inline-block;
-  animation: pulse 2s infinite;
-}}
-@keyframes pulse {{
-  0% {{ opacity: 1; transform: scale(1); }}
-  50% {{ opacity: 0.4; transform: scale(0.85); }}
-  100% {{ opacity: 1; transform: scale(1); }}
-}}
-.brand-sub {{
-  font-size: 12px;
-  color: #99f6e4;
-  margin-top: 2px;
-  letter-spacing: -0.01em;
-}}
+  text-decoration: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  transition: color 0.15s ease;
+}
+.brand-link:hover { color: var(--teal-accent); }
+.brand-icon { color: var(--teal-accent); display: flex; align-items: center; }
 
-.nav-toolbar {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
-.nav-btn {{
-  color: #ccfbf1;
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-link {
+  color: var(--text-muted);
   text-decoration: none;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  border-radius: 6px;
+  transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
-}}
-.nav-btn:hover {{ color: #ffffff; background: rgba(255, 255, 255, 0.12); }}
-.nav-btn.active {{
-  background: var(--teal-primary);
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}}
-
-.theme-toggle-btn {{
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
+}
+.nav-link:hover { color: #fff; background: rgba(255,255,255,0.06); }
+.nav-link.active { color: #fff; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); }
+.btn-scan {
+  background: var(--teal-accent);
+  color: #0a0a0a;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
   font-size: 13px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: inherit;
-  font-weight: 600;
-  min-height: 36px;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}}
-.theme-toggle-btn:hover {{ background: rgba(255, 255, 255, 0.18); }}
+  transition: opacity 0.15s ease;
+}
+.btn-scan:hover { opacity: 0.9; }
 
-.container {{
-  max-width: 1440px;
+/* Container */
+.container {
+  max-width: 1240px;
   width: 100%;
-  margin: 24px auto;
-  padding: 0 24px;
+  margin: 0 auto;
+  padding: 32px 24px 64px 24px;
   flex: 1;
-}}
+}
 """
 
 
@@ -717,7 +670,7 @@ def _dashboard_page(events, current_filter=None):
     applied_count = stats["applied_count"]
     next_event = stats["next_eligible_event"]
 
-    # Spotlight Hero: Next Eligible High-School Hackathon in Bengaluru
+    # Spotlight Hero: Next Eligible Hackathon
     next_event_html = ""
     if next_event:
         ne_id = _esc(next_event["event_id"])
@@ -733,116 +686,57 @@ def _dashboard_page(events, current_filter=None):
         ne_score = int(next_event["score"]) if next_event["score"] is not None else 0
         ne_token = tracker_store.sign_action("track", next_event["event_id"])
 
-        # Relative days computation for Spotlight
         relative_days_text = ""
         if ne_start_raw:
             try:
                 d_start = _datetime.strptime(ne_start_raw[:10], "%Y-%m-%d")
                 d_today = _datetime.strptime(today, "%Y-%m-%d")
-                delta_days = (d_start - d_today).days
-                if delta_days == 0:
+                delta = (d_start - d_today).days
+                if delta == 0:
                     relative_days_text = '<span class="spotlight-days-pill">Starts Today!</span>'
-                elif delta_days == 1:
+                elif delta == 1:
                     relative_days_text = '<span class="spotlight-days-pill">Starts Tomorrow</span>'
-                elif 2 <= delta_days <= 14:
-                    relative_days_text = f'<span class="spotlight-days-pill">Starts in {delta_days} days</span>'
+                elif 2 <= delta <= 14:
+                    relative_days_text = f'<span class="spotlight-days-pill">Starts in {delta} days</span>'
             except Exception:
                 pass
 
         next_event_html = f"""
-        <section class="spotlight-hero" aria-label="Next Eligible Opportunity">
+        <div class="spotlight-hero" aria-label="Next Eligible Opportunity">
           <div class="spotlight-header">
             <div class="spotlight-tag-row">
               <span class="spotlight-tag">🚀 Next Eligible Hackathon</span>
               {relative_days_text}
               <span class="spotlight-subtag">Zero Blackout Conflicts &middot; Class 11/12 Eligible</span>
             </div>
-            <div class="spotlight-score" title="Algorithm recommendation score out of 100">
+            <div class="spotlight-score">
               Match score: <strong>{ne_score}/100</strong>
             </div>
           </div>
           <div class="spotlight-body">
             <div class="spotlight-info">
-              <h2 class="spotlight-title"><a href="{ne_url}" target="_blank" rel="noopener">{ne_title}</a></h2>
+              <h2 class="spotlight-title"><a href="{ne_url}" target="_blank" rel="noopener">{ne_title} &rarr;</a></h2>
               <div class="spotlight-meta">
-                <span class="meta-item">🏢 {ne_host}</span>
-                <span class="meta-divider">&middot;</span>
-                <span class="meta-item">📍 {ne_loc} ({ne_mode.title()})</span>
-                <span class="meta-divider">&middot;</span>
-                <span class="meta-item">📅 Starts: <strong>{ne_start}</strong></span>
-                <span class="meta-divider">&middot;</span>
-                <span class="meta-item">👥 Team: {ne_team}</span>
-                <span class="meta-divider">&middot;</span>
-                <span class="meta-item">🏆 Prize: {ne_prize}</span>
+                <span>🏢 {ne_host}</span> &middot;
+                <span>📍 {ne_loc} ({ne_mode.title()})</span> &middot;
+                <span>📅 Starts: <strong>{ne_start}</strong></span> &middot;
+                <span>👥 Team: {ne_team}</span> &middot;
+                <span>🏆 Prize: {ne_prize}</span>
               </div>
               <p class="spotlight-why">{_esc(next_event['why'] or '')}</p>
             </div>
             <div class="spotlight-actions">
-              <a class="btn btn-track" href="/track?event_id={ne_id}&t={ne_token}" onclick="handleAjaxAction(event, '{ne_id}', 'track', '{ne_token}')">📌 Shortlist Opportunity</a>
-              <a class="btn btn-primary-link" href="{ne_url}" target="_blank" rel="noopener">Open Official Page &rarr;</a>
-              <button class="btn btn-outline" onclick="copyEventLink('{ne_url}')" title="Copy official URL to clipboard">🔗 Share</button>
+              <a class="btn-shortlist-action" href="/track?event_id={ne_id}&t={ne_token}" onclick="handleAjaxAction(event, '{ne_id}', 'track', '{ne_token}')">📌 Shortlist Opportunity</a>
+              <a class="btn-primary-link" href="{ne_url}" target="_blank" rel="noopener">Open Official Page &rarr;</a>
+              <button class="btn-shortlist-action" onclick="copyEventLink('{ne_url}')" title="Copy URL">🔗 Share</button>
             </div>
           </div>
-        </section>
+        </div>
         """
 
-    # Metrics Summary Row with Tabular Figures
-    metrics_html = f"""
-    <section class="metrics" role="region" aria-label="Platform Summary Metrics">
-      <a href="/dashboard" class="metric-card {'active-metric' if not current_filter else ''}" title="View all upcoming events">
-        <div class="metric-top">
-          <span class="metric-icon">🌐</span>
-          <span class="metric-trend">All active</span>
-        </div>
-        <div class="num">{total_upcoming}</div>
-        <div class="lbl">Total upcoming</div>
-      </a>
-      <a href="/dashboard?filter=eligible" class="metric-card highlight-emerald {'active-metric' if current_filter == 'eligible' else ''}" title="View student-eligible events with zero blackout conflicts">
-        <div class="metric-top">
-          <span class="metric-icon">✓</span>
-          <span class="metric-trend trend-green">Conflict-free</span>
-        </div>
-        <div class="num">{eligible_count}</div>
-        <div class="lbl">Eligible &amp; available</div>
-      </a>
-      <a href="/dashboard?filter=bengaluru" class="metric-card highlight-teal {'active-metric' if current_filter == 'bengaluru' else ''}" title="View Bangalore in-person and hybrid events">
-        <div class="metric-top">
-          <span class="metric-icon">📍</span>
-          <span class="metric-trend trend-teal">Top priority</span>
-        </div>
-        <div class="num">{bangalore_count}</div>
-        <div class="lbl">Bengaluru in-person</div>
-      </a>
-      <a href="/dashboard?filter=closing_soon" class="metric-card highlight-amber {'active-metric' if current_filter == 'closing_soon' else ''}" title="View registration closing soon">
-        <div class="metric-top">
-          <span class="metric-icon">⏳</span>
-          <span class="metric-trend trend-amber">&le; 7 days</span>
-        </div>
-        <div class="num">{closing_soon_count}</div>
-        <div class="lbl">Closing soon</div>
-      </a>
-      <a href="/dashboard?filter=tracked" class="metric-card highlight-indigo {'active-metric' if current_filter == 'tracked' else ''}" title="View saved / shortlisted opportunities">
-        <div class="metric-top">
-          <span class="metric-icon">📌</span>
-          <span class="metric-trend trend-indigo">Your list</span>
-        </div>
-        <div class="num">{tracked_count}</div>
-        <div class="lbl">Shortlisted / saved</div>
-      </a>
-      <a href="/dashboard?filter=excluded" class="metric-card highlight-rose {'active-metric' if current_filter == 'excluded' else ''}" title="View events excluded due to blackout conflicts">
-        <div class="metric-top">
-          <span class="metric-icon">⛔</span>
-          <span class="metric-trend trend-rose">Blackout</span>
-        </div>
-        <div class="num">{blackout_excluded}</div>
-        <div class="lbl">Blackout excluded</div>
-      </a>
-    </section>
-    """
-
-    # Generate Event Cards & Table Rows
-    cards_html = ""
+    # Generate hackathonradar.com style rows
     rows_html = ""
+    cards_html = ""
 
     for e in events:
         eid = _esc(e["event_id"])
@@ -869,14 +763,23 @@ def _dashboard_page(events, current_filter=None):
         is_conflict = bool(e["blackout_conflict"] if "blackout_conflict" in e.keys() else ("CONFLICT" in priority))
         date_status = str(e["date_status"] if "date_status" in e.keys() else "verified")
 
+        # Duration & Short date string
+        short_date = "TBD"
+        if start_raw:
+            try:
+                dt_obj = _datetime.strptime(start_raw[:10], "%Y-%m-%d")
+                short_date = dt_obj.strftime("%b %d")
+            except Exception:
+                short_date = start[:6]
+
         # Duration computation
-        duration_str = "1 day"
+        duration_str = "1d"
         try:
             if start_raw and end_raw:
                 d1 = _datetime.strptime(start_raw[:10], "%Y-%m-%d")
                 d2 = _datetime.strptime(end_raw[:10], "%Y-%m-%d")
                 days = (d2 - d1).days + 1
-                duration_str = f"{days} days" if days > 1 else "1 day"
+                duration_str = f"{days}d" if days > 1 else "1d"
         except Exception:
             pass
 
@@ -886,179 +789,88 @@ def _dashboard_page(events, current_filter=None):
             for p in ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr", "electronic city", "hebbal"]
         )
 
-        # Deadline status
-        is_closed = False
-        is_closing_soon = False
-        days_left_text = ""
-        if deadline_raw:
-            if deadline_raw[:10] < today:
-                is_closed = True
-            else:
-                try:
-                    d_dt = _datetime.strptime(deadline_raw[:10], "%Y-%m-%d")
-                    t_dt = _datetime.strptime(today, "%Y-%m-%d")
-                    diff = (d_dt - t_dt).days
-                    if 0 <= diff <= 7:
-                        is_closing_soon = True
-                        days_left_text = f" ({diff}d left)" if diff > 0 else " (Closes today!)"
-                except Exception:
-                    pass
-
-        # Priority & Status Pills (Shadcn aesthetic)
+        # Tags
+        tags_html = ""
         if is_conflict:
-            p_class = "p-conflict"
-            p_badge = '<span class="badge badge-conflict">⛔ Blackout Conflict</span>'
+            tags_html += '<span class="tag-conflict">Blackout Conflict</span>'
         elif "HIGH" in priority:
-            p_class = "p-high"
-            p_badge = f'<span class="badge badge-high">🔥 {_esc(priority)}</span>'
-        elif "MEDIUM" in priority:
-            p_class = "p-med"
-            p_badge = '<span class="badge badge-med">● Recommended</span>'
-        else:
-            p_class = "p-low"
-            p_badge = '<span class="badge badge-low">○ Standard</span>'
+            tags_html += '<span class="tag-featured">🔥 HIGH PRIORITY</span>'
+        
+        if is_bangalore:
+            tags_html += '<span class="tag-bengaluru">Bengaluru</span>'
 
-        # Eligibility Pill
         if eligibility == "ELIGIBLE":
-            elig_pill = '<span class="pill pill-success">✓ Class 11/12 Eligible</span>'
-        elif eligibility == "INELIGIBLE":
-            elig_pill = '<span class="pill pill-danger">✕ Ineligible</span>'
-        else:
-            elig_pill = '<span class="pill pill-warning">? Verify Eligibility</span>'
-
-        # Date status pill
-        date_pill = ""
-        if date_status == "uncertain" or not start_raw:
-            date_pill = '<span class="pill pill-warning" title="Event schedule unconfirmed">⚠️ Dates Unverified</span>'
-
-        # Deadline pill
-        if is_closed:
-            deadline_pill = '<span class="pill pill-danger">🛑 Closed</span>'
-        elif is_closing_soon:
-            deadline_pill = f'<span class="pill pill-warning">⏳ Closes: {deadline}{days_left_text}</span>'
-        else:
-            deadline_pill = f'<span class="pill pill-subtle">📅 Closes: {deadline}</span>'
-
-        # Location & Mode pills
-        loc_pill = f'<span class="pill {"pill-bengaluru" if is_bangalore else "pill-subtle"}">{"📍 Bengaluru" if is_bangalore else "📍 " + loc}</span>'
-        mode_pill = f'<span class="pill pill-mode mode-{mode}">{mode.title()}</span>'
+            tags_html += '<span class="tag-bengaluru">Class 11/12</span>'
 
         track_token = tracker_store.sign_action("track", e["event_id"])
         applied_token = tracker_store.sign_action("applied", e["event_id"])
         reject_token = tracker_store.sign_action("reject", e["event_id"])
 
-        state_pill = f'<span class="state-indicator state-{state}">{state.title()}</span>'
+        state_pill = f'<span class="state-pill state-{state}">{state.title()}</span>'
 
-        # Conflict alert box inside card
-        conflict_box = ""
-        if is_conflict:
-            conflict_box = f"""
-            <div class="card-conflict-alert" role="alert">
-              <strong>⛔ Excluded due to Blackout Conflict:</strong>
-              <div>{why}</div>
+        # HackathonRadar Row
+        rows_html += f"""
+        <div class="hr-row {'row-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-start="{start_raw}" data-title="{title.lower()}">
+          <span class="hr-time-pill" title="{start}">{short_date}</span>
+          <div class="hr-title-wrap">
+            <div class="hr-title-top">
+              {tags_html}
+              <a href="{url}" target="_blank" rel="noopener">{title}</a>
             </div>
-            """
+            <div class="hr-subtext">
+              <span>🏢 {host} via {source}</span> &middot;
+              <span>📍 {loc} ({mode.title()})</span> &middot;
+              <span>👥 {team}</span> &middot;
+              <span class="font-mono">📅 Closes: {deadline}</span>
+              {f'<span class="conflict-inline-warn">⛔ {why}</span>' if is_conflict else ''}
+            </div>
+          </div>
+          <div class="hr-prize">{prize}</div>
+          <div class="hr-score-wrap" title="Match score: {score}/100">
+            <span class="hr-score-num">{score}</span>
+            <div class="hr-score-bar-bg"><div class="hr-score-bar-fill" style="width: {score}%;"></div></div>
+          </div>
+          <div class="hr-actions">
+            <a class="btn-shortlist-action {'btn-active' if state == 'tracked' else ''}" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Shortlist</a>
+            <a class="btn-shortlist-action {'btn-active' if state == 'applied' else ''}" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
+            <button class="btn-shortlist-action" onclick="copyEventLink('{url}')" title="Copy link">🔗</button>
+            <a class="btn-shortlist-action" href="/event/{eid}">Details</a>
+          </div>
+        </div>
+        """
 
-        # Multi-source discovery information
-        e_dict = dict(e) if not isinstance(e, dict) else e
-        ds_raw = e_dict.get("discovery_sources")
-        ds_list = []
-        if ds_raw:
-            try:
-                ds_list = json.loads(ds_raw) if isinstance(ds_raw, str) else ds_raw
-            except Exception:
-                ds_list = []
-
-        sources_tag = ""
-        if len(ds_list) > 1:
-            sources_names = [s.get("source_name") or s.get("source") for s in ds_list if s.get("source_name") or s.get("source")]
-            sources_tag = f'<div class="multi-source-tag">🌐 Discovered across {len(ds_list)} sources: {_esc(", ".join(sources_names[:3]))}</div>'
-
-        ann_url = e_dict.get("announcement_url")
-        ann_link = ""
-        if ann_url and ann_url != url:
-            ann_link = f' &middot; <a href="{_esc(ann_url)}" target="_blank" rel="noopener" class="ann-link">📢 Announcement &rarr;</a>'
-
-        # Card Item (Grid View)
+        # Also support Card view
         cards_html += f"""
-        <article class="event-card {p_class} {'has-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-state="{state}" data-category="{category}" data-start="{start_raw}" data-title="{title.lower()}">
+        <article class="event-card {'has-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-state="{state}" data-start="{start_raw}" data-title="{title.lower()}">
           <div class="card-top">
             <div class="badges-row">
-              {p_badge}
-              {mode_pill}
-              {loc_pill}
-              {date_pill}
+              <span class="hr-time-pill">{short_date}</span>
+              {tags_html}
             </div>
-            <div class="score-badge" title="Algorithm recommendation score: {score}/100">
-              <span class="score-num">{score}</span>
+            <div class="hr-score-wrap">
+              <span class="hr-score-num">{score}</span>
+              <div class="hr-score-bar-bg"><div class="hr-score-bar-fill" style="width: {score}%;"></div></div>
             </div>
           </div>
-
           <h3 class="card-title"><a href="{url}" target="_blank" rel="noopener">{title}</a></h3>
-          <div class="card-host">🏢 {host} <span class="source-tag">via {source}</span>{ann_link}</div>
-          {sources_tag}
-
+          <div class="card-host">🏢 {host} <span class="source-tag">via {source}</span></div>
           <div class="card-specs">
-            <div class="spec-item"><span class="spec-k">Dates:</span> <span class="spec-v font-mono">{start} {f"&rarr; {end}" if end and end != start else ""} <span class="spec-duration">({duration_str})</span></span></div>
-            <div class="spec-item"><span class="spec-k">Registration:</span> <span class="spec-v">{deadline_pill}</span></div>
-            <div class="spec-item"><span class="spec-k">Team Size:</span> <span class="spec-v">👥 {team}</span></div>
-            <div class="spec-item"><span class="spec-k">Prize Pool:</span> <span class="spec-v">🏆 {prize}</span></div>
-            <div class="spec-item"><span class="spec-k">Student Status:</span> <span class="spec-v">{elig_pill}</span></div>
+            <div class="spec-item"><span class="spec-k">Dates:</span> <span class="spec-v font-mono">{start} &rarr; {end}</span></div>
+            <div class="spec-item"><span class="spec-k">Deadline:</span> <span class="spec-v font-mono">{deadline}</span></div>
+            <div class="spec-item"><span class="spec-k">Prize Pool:</span> <span class="spec-v hr-prize">{prize}</span></div>
+            <div class="spec-item"><span class="spec-k">Location:</span> <span class="spec-v">{loc} ({mode.title()})</span></div>
           </div>
-
-          {conflict_box if is_conflict else f'<div class="card-why"><strong>Recommendation note:</strong> {why}</div>'}
-
+          <div class="card-why">{why}</div>
           <div class="card-footer">
-            <div class="card-state-wrap">{state_pill}</div>
+            <div>{state_pill}</div>
             <div class="card-actions">
-              <a class="btn btn-sm btn-track {'btn-active' if state == 'tracked' else ''}" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Shortlist</a>
-              <a class="btn btn-sm btn-applied {'btn-active' if state == 'applied' else ''}" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
-              <button class="btn btn-sm btn-icon" onclick="copyEventLink('{url}')" title="Copy event link">🔗</button>
-              <a class="btn btn-sm btn-reject" href="/reject?event_id={eid}&t={reject_token}" onclick="handleAjaxAction(event, '{eid}', 'reject', '{reject_token}')" title="Dismiss event">✕</a>
-              <a class="btn btn-sm btn-detail" href="/event/{eid}">Details &rarr;</a>
+              <a class="btn-shortlist-action {'btn-active' if state == 'tracked' else ''}" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Shortlist</a>
+              <a class="btn-shortlist-action {'btn-active' if state == 'applied' else ''}" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
+              <button class="btn-shortlist-action" onclick="copyEventLink('{url}')" title="Copy link">🔗</button>
+              <a class="btn-shortlist-action" href="/event/{eid}">Details</a>
             </div>
           </div>
         </article>
-        """
-
-        # Table Row Item (Table View)
-        rows_html += f"""
-        <tr class="event-item-row {'row-conflict' if is_conflict else ''}" data-id="{eid}" data-mode="{mode}" data-bengaluru="{'true' if is_bangalore else 'false'}" data-score="{score}" data-start="{start_raw}" data-title="{title.lower()}">
-          <td width="150">
-            <div class="table-p-wrap">
-              {p_badge}
-              {f'<span class="sub-conflict-txt">Excluded</span>' if is_conflict else ''}
-            </div>
-          </td>
-          <td width="55" style="text-align:center;">
-            <div class="score-circle" aria-label="Score: {score}">{score}</div>
-          </td>
-          <td>
-            <div class="table-title-row">
-              <a class="table-title" href="{url}" target="_blank" rel="noopener">{title}</a>
-              {loc_pill}
-              {mode_pill}
-            </div>
-            <div class="table-meta">
-              <span>🏢 {host} <span class="source-tag">via {source}</span>{ann_link}</span> &middot;
-              <span class="font-mono">📅 {start} {f"&rarr; {end}" if end and end != start else ""} ({duration_str})</span> &middot;
-              <span>🏆 {prize}</span> &middot;
-              <span>👥 {team}</span>
-            </div>
-            <div class="table-why">{why}</div>
-          </td>
-          <td width="150">{elig_pill}</td>
-          <td width="150">{deadline_pill}</td>
-          <td width="90">{state_pill}</td>
-          <td width="220" style="text-align:right;">
-            <div class="btn-group">
-              <a class="btn btn-sm btn-track" href="/track?event_id={eid}&t={track_token}" onclick="handleAjaxAction(event, '{eid}', 'track', '{track_token}')">📌 Track</a>
-              <a class="btn btn-sm btn-applied" href="/applied?event_id={eid}&t={applied_token}" onclick="handleAjaxAction(event, '{eid}', 'applied', '{applied_token}')">🎯 Applied</a>
-              <button class="btn btn-sm btn-icon" onclick="copyEventLink('{url}')" title="Copy link">🔗</button>
-              <a class="btn btn-sm btn-detail" href="/event/{eid}">Details</a>
-            </div>
-          </td>
-        </tr>
         """
 
     return f"""<!DOCTYPE html>
@@ -1066,25 +878,108 @@ def _dashboard_page(events, current_filter=None):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Buildathon Radar - Student Event Discovery &amp; Blackout Management</title>
+<title>Hackathon Radar - Student Opportunity Discovery</title>
 <style>
 {_SHARED_HEAD_CSS}
 
+/* Hero Section */
+.hero-badge {{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}}
+.live-dot-wrap {{ position: relative; width: 6px; height: 6px; }}
+.live-dot {{ position: absolute; inset: 0; border-radius: 50%; background: #4ade80; }}
+.live-ping {{
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: hr-live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}}
+@keyframes hr-live-ping {{
+  0% {{ opacity: 0.8; transform: scale(1); }}
+  100% {{ opacity: 0; transform: scale(2.6); }}
+}}
+
+.hero-title {{
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  color: #ffffff;
+  margin: 0 0 16px 0;
+  max-width: 640px;
+}}
+.hero-title .count {{
+  font-family: var(--font-mono);
+  font-feature-settings: 'cv01';
+  color: #fff;
+}}
+.hero-subtitle {{
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 520px;
+  margin: 0 0 26px 0;
+}}
+
+/* 4 Quick Metric Cards */
+.hero-metrics {{
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  max-width: 580px;
+  margin-bottom: 32px;
+}}
+.hero-metric-card {{
+  display: block;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  padding: 12px 14px;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}}
+.hero-metric-card:hover {{
+  border-color: rgba(94, 234, 212, 0.45);
+  background: rgba(255, 255, 255, 0.02);
+}}
+.metric-num {{
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #fff;
+}}
+.metric-num.rose {{ color: #fda4af; }}
+.metric-num.teal {{ color: var(--teal-accent); }}
+.metric-num.gold {{ color: var(--gold-prize); }}
+.metric-label {{
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}}
+
 /* Spotlight Hero */
 .spotlight-hero {{
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
-  padding: 22px 26px;
-  margin-bottom: 22px;
-  position: relative;
-  overflow: hidden;
-  border-left: 4px solid var(--teal-primary);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}}
-.spotlight-hero:hover {{
-  box-shadow: var(--shadow-md);
+  background: #0d0d0d;
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--teal-accent);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
 }}
 .spotlight-header {{
   display: flex;
@@ -1094,742 +989,429 @@ def _dashboard_page(events, current_filter=None):
   gap: 10px;
   margin-bottom: 12px;
 }}
-.spotlight-tag-row {{
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}}
+.spotlight-tag-row {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
 .spotlight-tag {{
-  font-size: 11px;
-  font-weight: 800;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--teal-primary);
-  background: var(--teal-light);
-  padding: 3px 8px;
+  letter-spacing: 0.08em;
+  color: var(--teal-accent);
+  background: rgba(94, 234, 212, 0.1);
+  border: 1px solid rgba(94, 234, 212, 0.3);
+  padding: 2px 8px;
   border-radius: 4px;
 }}
 .spotlight-days-pill {{
   font-size: 11px;
   font-weight: 700;
-  color: var(--emerald-primary);
-  background: var(--emerald-light);
-  padding: 3px 8px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 2px 8px;
   border-radius: 4px;
 }}
-.spotlight-subtag {{
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 500;
-}}
+.spotlight-subtag {{ font-size: 12px; color: var(--text-muted); }}
 .spotlight-score {{
   font-size: 13px;
   color: var(--text-muted);
-  background: var(--bg-subtle);
+  background: rgba(255, 255, 255, 0.04);
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-color);
 }}
-.spotlight-score strong {{
-  color: var(--teal-primary);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}}
-.spotlight-title {{
-  font-size: 20px;
-  font-weight: 800;
-  margin: 0 0 8px 0;
-  letter-spacing: -0.3px;
-}}
-.spotlight-title a {{
-  color: var(--text-main);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}}
-.spotlight-title a:hover {{
-  color: var(--teal-primary);
-  text-decoration: underline;
-}}
-.spotlight-meta {{
-  font-size: 13px;
-  color: var(--text-muted);
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}}
-.meta-item {{ display: inline-flex; align-items: center; gap: 4px; }}
-.meta-divider {{ color: var(--text-dim); }}
+.spotlight-score strong {{ color: var(--teal-accent); font-family: var(--font-mono); }}
+.spotlight-title {{ font-size: 20px; font-weight: 700; margin: 0 0 8px 0; }}
+.spotlight-title a {{ color: #fff; text-decoration: none; }}
+.spotlight-title a:hover {{ color: var(--teal-accent); }}
+.spotlight-meta {{ font-size: 13px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
 .spotlight-why {{
   font-size: 13px;
-  color: var(--text-main);
-  background: var(--bg-subtle);
-  border-left: 3px solid var(--teal-primary);
-  padding: 10px 14px;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  margin: 0 0 16px 0;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 3px solid var(--teal-accent);
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  margin: 0 0 14px 0;
   line-height: 1.5;
 }}
-.spotlight-actions {{
-  display: flex;
-  gap: 10px;
+.spotlight-actions {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }}
+.btn-primary-link {{
+  background: var(--teal-accent);
+  color: #0a0a0a;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 12px;
+  display: inline-flex;
   align-items: center;
+  gap: 5px;
+}}
+.btn-primary-link:hover {{ opacity: 0.9; }}
+
+/* Radar Box Container */
+.radar-box {{
+  background: #0d0d0d;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 32px;
+}}
+.radar-box-header {{
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.015);
+}}
+.search-input-wrap {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 12px;
+  min-width: 280px;
+}}
+.search-input-wrap input {{
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+}}
+.kbd {{
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  padding: 2px 5px;
+  border-radius: 4px;
 }}
 
-/* Metrics Grid - Tabular Figures & Modern Shadcn Cards */
-.metrics {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
+/* Filter Pills */
+.filter-pills {{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }}
-.metric-card {{
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
+.filter-pill {{
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  padding: 5px 11px;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}}
+.filter-pill:hover {{ color: #fff; background: rgba(255, 255, 255, 0.08); }}
+.filter-pill.active {{ color: #fff; background: rgba(255, 255, 255, 0.12); border-color: var(--border-color); font-weight: 600; }}
+
+/* Row Component */
+.hr-row {{
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 12px 18px;
   text-decoration: none;
   color: inherit;
-  display: flex;
-  flex-direction: column;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-  position: relative;
+  transition: background-color 0.15s ease;
 }}
-.metric-card:hover {{
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-  border-color: var(--border-subtle);
-}}
-.metric-card.active-metric {{
-  border-color: var(--teal-primary);
-  box-shadow: 0 0 0 2px var(--teal-primary);
-}}
-.metric-top {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}}
-.metric-icon {{ font-size: 16px; }}
-.metric-trend {{
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  background: var(--bg-subtle);
-  padding: 2px 6px;
-  border-radius: 4px;
-}}
-.trend-green {{ color: var(--emerald-primary); background: var(--emerald-light); }}
-.trend-teal {{ color: var(--teal-primary); background: var(--teal-light); }}
-.trend-amber {{ color: var(--amber-primary); background: var(--amber-light); }}
-.trend-indigo {{ color: var(--indigo-primary); background: var(--indigo-light); }}
-.trend-rose {{ color: var(--rose-primary); background: var(--rose-light); }}
+.hr-row:last-child {{ border-bottom: none; }}
+.hr-row:hover {{ background-color: var(--bg-card-hover); }}
+.row-conflict {{ background-color: rgba(244, 63, 94, 0.03); }}
 
-.metric-card .num {{
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--text-main);
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
-}}
-.metric-card .lbl {{
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-top: 6px;
-  letter-spacing: 0.5px;
-  font-weight: 700;
-}}
-.highlight-emerald {{ border-left: 3px solid var(--emerald-primary); }}
-.highlight-rose {{ border-left: 3px solid var(--rose-primary); }}
-.highlight-teal {{ border-left: 3px solid var(--teal-primary); }}
-.highlight-amber {{ border-left: 3px solid var(--amber-primary); }}
-.highlight-indigo {{ border-left: 3px solid var(--indigo-primary); }}
-
-/* Filter & Controls Toolbar */
-.toolbar {{
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  padding: 14px 18px;
-  margin-bottom: 20px;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}}
-.toolbar-top {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}}
-.filter-tabs {{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}}
-.tab-link {{
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  color: var(--text-muted);
-  background: var(--bg-subtle);
-  border: 1px solid transparent;
-  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-  min-height: 32px;
-}}
-.tab-link:hover {{
-  background: var(--border);
-  color: var(--text-main);
-}}
-.tab-link.active {{
-  background: var(--teal-primary);
-  color: #ffffff;
-  font-weight: 700;
-}}
-
-.search-and-view {{ display: flex; align-items: center; gap: 10px; }}
-.search-box {{
-  display: inline-flex;
-  align-items: center;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  min-width: 290px;
-  gap: 8px;
-  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
-}}
-.search-box:focus-within {{
-  border-color: var(--teal-primary);
-  background: var(--bg-card);
-  box-shadow: 0 0 0 2px var(--teal-light);
-}}
-.search-box input {{
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  outline: none;
-  width: 100%;
-  font-family: inherit;
-  color: var(--text-main);
-}}
-.kbd-hint {{
-  font-size: 10px;
+.hr-time-pill {{
   font-family: var(--font-mono);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 5px;
+  font-size: 11px;
   color: var(--text-muted);
-  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  padding: 4px 8px;
+  text-align: center;
+  min-width: 52px;
 }}
 
-.view-toggle {{
-  display: inline-flex;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-sm);
-  padding: 2px;
-  border: 1px solid var(--border);
+.hr-title-wrap {{
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }}
-.view-btn {{
-  background: transparent;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 13px;
-  transition: background-color 0.15s ease, color 0.15s ease;
-}}
-.view-btn:hover {{ color: var(--text-main); }}
-.view-btn.active {{
-  background: var(--bg-card);
-  color: var(--text-main);
-  font-weight: 700;
-  box-shadow: var(--shadow-xs);
-}}
-
-.toolbar-secondary {{
+.hr-title-top {{
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-}}
-.filter-select {{
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  color: var(--text-main);
-  border-radius: var(--radius-sm);
-  padding: 5px 10px;
-  font-size: 12px;
-  font-family: inherit;
+  gap: 8px;
+  font-size: 14px;
   font-weight: 600;
-  outline: none;
-  transition: border-color 0.15s ease;
+  color: #fff;
 }}
-.filter-select:focus {{
-  border-color: var(--teal-primary);
+.hr-title-top a {{
+  color: #fff;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}}
+.hr-title-top a:hover {{ color: var(--teal-accent); }}
+
+.tag-featured {{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--orange-featured);
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}}
+.tag-bengaluru {{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--teal-accent);
+  background: rgba(94, 234, 212, 0.1);
+  border: 1px solid rgba(94, 234, 212, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}}
+.tag-conflict {{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--rose-conflict);
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid var(--rose-border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }}
 
-/* Cards Grid */
+.hr-subtext {{
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}}
+.conflict-inline-warn {{ color: var(--rose-conflict); margin-left: 6px; }}
+
+.hr-prize {{
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold-prize);
+  text-align: right;
+  min-width: 80px;
+}}
+
+.hr-score-wrap {{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 60px;
+}}
+.hr-score-num {{
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--green-score);
+  font-weight: 600;
+}}
+.hr-score-bar-bg {{
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}}
+.hr-score-bar-fill {{
+  height: 100%;
+  border-radius: 2px;
+  background: var(--green-score);
+}}
+
+.hr-actions {{
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}}
+.btn-shortlist-action {{
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}}
+.btn-shortlist-action:hover, .btn-shortlist-action.btn-active {{
+  background: #10b981;
+  color: #000;
+  border-color: #10b981;
+}}
+
+/* Cards View fallback */
 .cards-grid {{
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
-  gap: 18px;
+  gap: 16px;
   margin-bottom: 24px;
 }}
 .event-card {{
   background: var(--bg-card);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
-  padding: 20px;
+  border: 1px solid var(--border-color);
+  border-radius: 11px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-  position: relative;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }}
-.event-card:hover {{
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
-  border-color: var(--border-subtle);
-}}
-.event-card.has-conflict {{
-  border-left: 4px solid var(--rose-primary);
-}}
-
-.card-top {{
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 12px;
-}}
-.badges-row {{ display: flex; flex-wrap: wrap; gap: 5px; }}
-.score-badge {{
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--teal-light);
-  color: var(--teal-primary);
-  border: 1.5px solid var(--teal-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}}
-
-.card-title {{
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 6px 0;
-  line-height: 1.35;
-  letter-spacing: -0.2px;
-}}
-.card-title a {{
-  color: var(--text-main);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}}
-.card-title a:hover {{
-  color: var(--teal-primary);
-  text-decoration: underline;
-}}
-.card-host {{
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}}
-.source-tag {{ font-size: 11px; color: var(--text-dim); margin-left: 4px; }}
-.ann-link {{
-  color: var(--teal-primary);
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 600;
-}}
-.multi-source-tag {{
-  font-size: 11px;
-  color: var(--teal-primary);
-  font-weight: 600;
-  margin-bottom: 8px;
-}}
-
+.event-card:hover {{ border-color: rgba(94, 234, 212, 0.45); }}
+.event-card.has-conflict {{ border-left: 3px solid var(--rose-conflict); }}
+.card-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+.badges-row {{ display: flex; gap: 6px; align-items: center; }}
+.card-title {{ font-size: 15px; font-weight: 600; margin: 0 0 6px 0; }}
+.card-title a {{ color: #fff; text-decoration: none; }}
+.card-title a:hover {{ color: var(--teal-accent); }}
+.card-host {{ font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }}
 .card-specs {{
-  background: var(--bg-subtle);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px;
   font-size: 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   margin-bottom: 12px;
 }}
-.spec-item {{ display: flex; justify-content: space-between; align-items: center; }}
-.spec-k {{ color: var(--text-muted); font-weight: 600; }}
-.spec-v {{ color: var(--text-main); font-weight: 700; }}
-.font-mono {{ font-family: var(--font-mono); font-size: 11px; }}
-.spec-duration {{ color: var(--text-dim); font-weight: 500; font-size: 11px; }}
+.spec-item {{ display: flex; justify-content: space-between; }}
+.spec-k {{ color: var(--text-dim); }}
+.spec-v {{ color: #fff; font-weight: 500; }}
+.card-why {{ font-size: 12px; color: var(--text-muted); background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px; margin-bottom: 12px; line-height: 1.4; flex: 1; }}
+.card-footer {{ display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border-color); }}
+.card-actions {{ display: flex; gap: 4px; }}
 
-.card-why {{
-  font-size: 12px;
-  color: var(--text-muted);
-  background: var(--bg-hover);
-  border-left: 3px solid var(--teal-primary);
-  padding: 8px 10px;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  margin-bottom: 14px;
-  line-height: 1.45;
-  flex: 1;
-}}
-.card-conflict-alert {{
-  background: var(--rose-light);
-  border-left: 3px solid var(--rose-primary);
-  padding: 8px 10px;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  font-size: 12px;
-  color: #991b1b;
-  margin-bottom: 14px;
-  line-height: 1.45;
-}}
-[data-theme="dark"] .card-conflict-alert {{ color: #fda4af; }}
+.state-pill {{ font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); }}
 
-.card-footer {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  gap: 8px;
-  flex-wrap: wrap;
-}}
-.card-actions {{ display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }}
-
-/* Badges & Pills - High Contrast Semantic */
-.badge {{
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}}
-.badge-high {{ background: var(--emerald-light); color: var(--emerald-primary); }}
-.badge-med {{ background: var(--amber-light); color: var(--amber-primary); }}
-.badge-low {{ background: var(--bg-subtle); color: var(--text-muted); }}
-.badge-conflict {{ background: var(--rose-light); color: var(--rose-primary); }}
-
-.pill {{
-  display: inline-block;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 700;
-}}
-.pill-success {{ background: var(--emerald-light); color: var(--emerald-primary); }}
-.pill-warning {{ background: var(--amber-light); color: var(--amber-primary); }}
-.pill-danger {{ background: var(--rose-light); color: var(--rose-primary); }}
-.pill-subtle {{ background: var(--bg-subtle); color: var(--text-muted); }}
-.pill-bengaluru {{
-  background: var(--teal-light);
-  color: var(--teal-primary);
-  border: 1px solid var(--teal-primary);
-}}
-.pill-mode {{ text-transform: uppercase; font-size: 10px; }}
-.mode-in-person {{ background: var(--indigo-light); color: var(--indigo-primary); }}
-.mode-online {{ background: var(--purple-light); color: var(--purple-primary); }}
-.mode-hybrid {{ background: var(--teal-light); color: var(--teal-primary); }}
-
-.state-indicator {{
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 4px;
-}}
-.state-seen {{ background: var(--bg-subtle); color: var(--text-dim); }}
-.state-tracked {{ background: var(--emerald-light); color: var(--emerald-primary); }}
-.state-applied {{ background: var(--indigo-light); color: var(--indigo-primary); }}
-.state-rejected {{ background: var(--rose-light); color: var(--rose-primary); }}
-
-/* Buttons - Accessible, High Tap Target */
-.btn {{
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: none;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  font-family: inherit;
-  min-height: 32px;
-}}
-.btn-sm {{ padding: 4px 8px; font-size: 11px; min-height: 28px; }}
-.btn-icon {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
-.btn-icon:hover {{ background: var(--border); color: var(--text-main); }}
-.btn-track {{ background: var(--bg-subtle); color: var(--text-main); border-color: var(--border); }}
-.btn-track:hover, .btn-track.btn-active {{ background: var(--emerald-primary); color: #fff; border-color: var(--emerald-primary); }}
-.btn-applied {{ background: var(--bg-subtle); color: var(--text-main); border-color: var(--border); }}
-.btn-applied:hover, .btn-applied.btn-active {{ background: var(--indigo-primary); color: #fff; border-color: var(--indigo-primary); }}
-.btn-reject {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
-.btn-reject:hover {{ background: var(--rose-primary); color: #fff; border-color: var(--rose-primary); }}
-.btn-detail {{ background: var(--bg-subtle); color: var(--text-muted); border-color: var(--border); }}
-.btn-detail:hover {{ background: var(--border); color: var(--text-main); }}
-.btn-outline {{ background: transparent; color: var(--text-main); border: 1px solid var(--border); }}
-.btn-outline:hover {{ background: var(--bg-subtle); }}
-.btn-primary-link {{ background: var(--teal-primary); color: #fff; }}
-.btn-primary-link:hover {{ background: var(--teal-hover); }}
-
-/* Table View */
-.table-wrap {{
-  background: var(--bg-card);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-xs);
-  overflow-x: auto;
-  margin-bottom: 24px;
-}}
-table {{ width: 100%; border-collapse: collapse; text-align: left; }}
-th {{
-  background: var(--bg-subtle);
-  padding: 12px 14px;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  font-weight: 800;
-  border-bottom: 1px solid var(--border);
-}}
-td {{
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  font-size: 13px;
-  vertical-align: top;
-}}
-tr:hover td {{ background: var(--bg-hover); }}
-.row-conflict {{ background: rgba(244, 63, 94, 0.03); }}
-.table-title {{ font-weight: 700; color: var(--text-main); text-decoration: none; }}
-.table-title:hover {{ color: var(--teal-primary); text-decoration: underline; }}
-.table-meta {{ font-size: 12px; color: var(--text-muted); margin-top: 3px; display: flex; gap: 8px; flex-wrap: wrap; }}
-.table-why {{ font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.4; }}
-.score-circle {{
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--teal-light);
-  color: var(--teal-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  border: 1px solid var(--teal-primary);
-}}
-
-/* Toast Notification */
+/* Toast Notice */
 .toast-notice {{
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background: var(--bg-card);
-  color: var(--text-main);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--teal-primary);
-  padding: 12px 20px;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg);
+  background: #141414;
+  color: #fff;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--teal-accent);
+  padding: 12px 18px;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
   font-size: 13px;
   font-weight: 600;
   z-index: 1000;
   display: none;
-  animation: slideUpToast 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }}
-@keyframes slideUpToast {{
-  from {{ transform: translateY(12px); opacity: 0; }}
-  to {{ transform: translateY(0); opacity: 1; }}
-}}
-
-/* Empty state design */
-.empty-state {{
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 56px 24px;
-  background: var(--bg-card);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-}}
-.empty-state-icon {{ font-size: 36px; margin-bottom: 12px; }}
-.empty-state-title {{ font-size: 16px; font-weight: 700; margin: 0 0 6px 0; }}
-.empty-state-desc {{ font-size: 13px; color: var(--text-muted); margin: 0 0 16px 0; }}
 
 @media (max-width: 768px) {{
-  header.app-header {{ padding: 12px 16px; flex-direction: column; align-items: stretch; gap: 10px; }}
-  .container {{ padding: 0 12px; }}
-  .metrics {{ grid-template-columns: repeat(2, 1fr); }}
-  .cards-grid {{ grid-template-columns: 1fr; }}
-  .search-box {{ min-width: 100%; }}
-  .toolbar-top {{ flex-direction: column; align-items: stretch; }}
-  .search-and-view {{ width: 100%; }}
+  .hero-title {{ font-size: 34px; }}
+  .hero-metrics {{ grid-template-columns: repeat(2, 1fr); }}
+  .hr-row {{ grid-template-columns: auto 1fr auto; gap: 8px; }}
+  .hr-prize {{ display: none; }}
+  .search-input-wrap {{ min-width: 100%; }}
+  .radar-box-header {{ flex-direction: column; align-items: stretch; }}
 }}
 </style>
 <script>
-// Theme support (light/dark system sync & persistence)
 function toggleTheme() {{
   const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   const nxt = cur === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nxt);
   localStorage.setItem('radar_theme', nxt);
-  updateThemeBtn();
-}}
-function updateThemeBtn() {{
-  const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const btn = document.getElementById('themeToggleBtn');
-  if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light' : '🌙 Dark';
+  if (btn) btn.textContent = nxt === 'dark' ? '☀️ Light' : '🌙 Dark';
 }}
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
-document.documentElement.setAttribute('data-theme', savedTheme);
-window.addEventListener('DOMContentLoaded', updateThemeBtn);
 
-// View switch (Grid vs Table)
 function setViewMode(mode) {{
+  const list = document.getElementById('hackathonList');
   const grid = document.getElementById('cardsContainer');
-  const table = document.getElementById('tableContainer');
+  const btnList = document.getElementById('btnViewList');
   const btnGrid = document.getElementById('btnViewGrid');
-  const btnTable = document.getElementById('btnViewTable');
 
-  if (mode === 'table') {{
-    if (grid) grid.style.display = 'none';
-    if (table) table.style.display = 'block';
-    if (btnGrid) btnGrid.classList.remove('active');
-    if (btnTable) btnTable.classList.add('active');
-    localStorage.setItem('radar_view', 'table');
-  }} else {{
+  if (mode === 'grid') {{
+    if (list) list.style.display = 'none';
     if (grid) grid.style.display = 'grid';
-    if (table) table.style.display = 'none';
     if (btnGrid) btnGrid.classList.add('active');
-    if (btnTable) btnTable.classList.remove('active');
+    if (btnList) btnList.classList.remove('active');
     localStorage.setItem('radar_view', 'grid');
+  }} else {{
+    if (list) list.style.display = 'block';
+    if (grid) grid.style.display = 'none';
+    if (btnList) btnList.classList.add('active');
+    if (btnGrid) btnGrid.classList.remove('active');
+    localStorage.setItem('radar_view', 'list');
   }}
 }}
 
-// Instant Client-side filtering, searching & sorting
 function filterEvents() {{
   const query = (document.getElementById('radarSearch').value || '').toLowerCase().trim();
-  const locVal = (document.getElementById('filterLocation')?.value || 'all').toLowerCase();
-  const modeVal = (document.getElementById('filterMode')?.value || 'all').toLowerCase();
-  const sortVal = document.getElementById('sortSelect')?.value || 'score';
-
-  const cardsContainer = document.getElementById('cardsContainer');
-  const tableContainer = document.getElementById('tableContainer');
-
+  const rows = Array.from(document.querySelectorAll('.hr-row'));
   const cards = Array.from(document.querySelectorAll('.event-card'));
-  const rows = Array.from(document.querySelectorAll('.event-item-row'));
-
   let matchCount = 0;
 
   function matches(el) {{
     const text = el.innerText.toLowerCase();
-    const mode = (el.getAttribute('data-mode') || '').toLowerCase();
-    const isBangalore = el.getAttribute('data-bengaluru') === 'true';
-
     if (query && !text.includes(query)) return false;
-    if (locVal === 'bangalore' && !isBangalore) return false;
-    if (modeVal !== 'all' && mode !== modeVal) return false;
     return true;
   }}
 
-  // Sort comparator
-  function compareEls(a, b) {{
-    if (sortVal === 'score') {{
-      const sa = parseInt(a.getAttribute('data-score') || '0', 10);
-      const sb = parseInt(b.getAttribute('data-score') || '0', 10);
-      return sb - sa;
-    }} else if (sortVal === 'date') {{
-      const da = a.getAttribute('data-start') || '9999';
-      const db = b.getAttribute('data-start') || '9999';
-      return da.localeCompare(db);
-    }} else if (sortVal === 'title') {{
-      const ta = a.getAttribute('data-title') || '';
-      const tb = b.getAttribute('data-title') || '';
-      return ta.localeCompare(tb);
-    }}
-    return 0;
-  }}
-
-  cards.sort(compareEls);
-  rows.sort(compareEls);
+  rows.forEach(r => {{
+    const ok = matches(r);
+    r.style.display = ok ? 'grid' : 'none';
+    if (ok) matchCount++;
+  }});
 
   cards.forEach(c => {{
     const ok = matches(c);
     c.style.display = ok ? 'flex' : 'none';
-    if (ok) {{
-      matchCount++;
-      cardsContainer.appendChild(c);
-    }}
-  }});
-
-  const tableBody = document.querySelector('table tbody');
-  rows.forEach(r => {{
-    const ok = matches(r);
-    r.style.display = ok ? '' : 'none';
-    if (ok && tableBody) {{
-      tableBody.appendChild(r);
-    }}
   }});
 
   const countEl = document.getElementById('searchCount');
   if (countEl) {{
     countEl.textContent = query ? matchCount + ' matching' : '';
   }}
-  const visibleSummary = document.getElementById('visibleSummaryCount');
-  if (visibleSummary) {{
-    visibleSummary.textContent = matchCount;
-  }}
-
-  const emptyCardState = document.getElementById('emptyCardState');
-  if (emptyCardState) {{
-    emptyCardState.style.display = matchCount === 0 ? 'block' : 'none';
-  }}
 }}
 
-function resetFilters() {{
-  const s = document.getElementById('radarSearch');
-  if (s) s.value = '';
-  const fl = document.getElementById('filterLocation');
-  if (fl) fl.value = 'all';
-  const fm = document.getElementById('filterMode');
-  if (fm) fm.value = 'all';
-  const sort = document.getElementById('sortSelect');
-  if (sort) sort.value = 'score';
-  filterEvents();
-}}
-
-// AJAX Action handling without full page refresh
 async function handleAjaxAction(event, eventId, action, token) {{
   if (event) event.preventDefault();
   try {{
@@ -1840,18 +1422,10 @@ async function handleAjaxAction(event, eventId, action, token) {{
     }});
     const data = await resp.json();
     if (data.status === 'ok') {{
-      const actionName = action === 'track' ? 'Shortlisted' : (action === 'applied' ? 'Applied' : 'Rejected');
-      showToast(`✓ Marked as ${{actionName}}`);
-      // Update UI state indicators
-      document.querySelectorAll(`[data-id="${{eventId}}"] .state-indicator`).forEach(el => {{
-        el.textContent = data.state.toUpperCase();
-        el.className = 'state-indicator state-' + data.state;
+      showToast('✓ ' + action.toUpperCase() + ' recorded');
+      document.querySelectorAll(`[data-id="${{eventId}}"] .btn-shortlist-action`).forEach(b => {{
+        if (b.innerText.toLowerCase().includes(action)) b.classList.add('btn-active');
       }});
-      if (action === 'track') {{
-        document.querySelectorAll(`[data-id="${{eventId}}"] .btn-track`).forEach(btn => btn.classList.add('btn-active'));
-      }} else if (action === 'applied') {{
-        document.querySelectorAll(`[data-id="${{eventId}}"] .btn-applied`).forEach(btn => btn.classList.add('btn-active'));
-      }}
     }} else {{
       window.location.href = `/${{action}}?event_id=${{eventId}}&t=${{token}}`;
     }}
@@ -1862,7 +1436,7 @@ async function handleAjaxAction(event, eventId, action, token) {{
 
 function copyEventLink(url) {{
   navigator.clipboard.writeText(url).then(() => {{
-    showToast('✓ Event link copied to clipboard!');
+    showToast('✓ Link copied to clipboard!');
   }}).catch(() => {{
     showToast('Link: ' + url);
   }});
@@ -1873,7 +1447,7 @@ function showToast(msg) {{
   if (t) {{
     t.textContent = msg;
     t.style.display = 'block';
-    setTimeout(() => {{ t.style.display = 'none'; }}, 3500);
+    setTimeout(() => {{ t.style.display = 'none'; }}, 3000);
   }}
 }}
 
@@ -1881,9 +1455,9 @@ async function triggerDiscoveryScan() {{
   const btn = document.getElementById('btnScanNow');
   if (btn) {{
     btn.disabled = true;
-    btn.textContent = '⏳ Scanning 27 sources...';
+    btn.textContent = '⏳ Scanning...';
   }}
-  showToast('Starting discovery scan across 27 sources...');
+  showToast('Running live discovery scan across 51 platforms...');
   try {{
     const resp = await fetch('/api/scan', {{
       method: 'POST',
@@ -1892,20 +1466,20 @@ async function triggerDiscoveryScan() {{
     }});
     const data = await resp.json();
     if (data.status === 'ok') {{
-      showToast(`Scan complete in ${{data.duration_seconds}}s: ${{data.new_events}} new, ${{data.updated_events}} updated!`);
-      setTimeout(() => window.location.reload(), 1500);
+      showToast(`Scan complete: ${{data.new_events}} new events found!`);
+      setTimeout(() => window.location.reload(), 1200);
     }} else {{
-      showToast('Scan error: ' + (data.error || 'Failed'));
+      showToast('Scan error');
       if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan Hackathons'; }}
     }}
-  }} catch (err) {{
-    showToast('Network error during discovery scan');
+  }} catch (e) {{
+    showToast('Scan failed');
     if (btn) {{ btn.disabled = false; btn.textContent = '⚡ Scan Hackathons'; }}
   }}
 }}
 
 window.addEventListener('DOMContentLoaded', () => {{
-  const savedView = localStorage.getItem('radar_view') || 'grid';
+  const savedView = localStorage.getItem('radar_view') || 'list';
   setViewMode(savedView);
 }});
 
@@ -1925,109 +1499,90 @@ window.addEventListener('keydown', function(e) {{
 <body>
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <header class="app-header" role="banner">
-  <div class="brand-group">
-    <div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <a href="/dashboard" class="brand-title">🛰️ Buildathon Radar</a>
-        <span class="brand-badge">Live Discovery</span>
+  <div class="header-inner">
+    <a href="/dashboard" class="brand-link">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
       </div>
-      <div class="brand-sub">Indian High School Student Edition &middot; Bengaluru &middot; Blackout-Aware Filtering</div>
+      <span>HackathonRadar</span>
+    </a>
+    <div class="nav-links">
+      <a href="/dashboard" class="nav-link {'active' if not current_filter or current_filter != 'excluded' else ''}">Dashboard</a>
+      <a href="/dashboard?filter=excluded" class="nav-link {'active' if current_filter == 'excluded' else ''}">Blackout Conflicts</a>
+      <a href="/calendar" class="nav-link">Personal Calendar</a>
+      <a href="/sources" class="nav-link">51 Sources</a>
+      <button id="btnScanNow" class="btn-scan" onclick="triggerDiscoveryScan()">⚡ Scan Hackathons</button>
+      <a href="/list" class="nav-link">List View</a>
+      <button id="themeToggleBtn" class="nav-link" onclick="toggleTheme()" style="cursor:pointer; background:transparent; border:none;">☀️ Light</button>
     </div>
   </div>
-  <nav class="nav-toolbar" aria-label="Main Navigation">
-    <a href="/dashboard" class="nav-btn {'active' if not current_filter or current_filter != 'excluded' else ''}">⚡ Dashboard</a>
-    <a href="/dashboard?filter=excluded" class="nav-btn {'active' if current_filter == 'excluded' else ''}">⛔ Excluded Events</a>
-    <a href="/calendar" class="nav-btn">📅 Blackout Calendar</a>
-    <a href="/sources" class="nav-btn">🌐 Sources</a>
-    <button id="btnScanNow" class="nav-btn" style="background:var(--teal-primary); color:#ffffff; border-color:var(--teal-primary); cursor:pointer; font-weight:700;" onclick="triggerDiscoveryScan()" title="Trigger discovery across all 27 platforms">⚡ Scan Hackathons</button>
-    <a href="/list" class="nav-btn">📋 List View</a>
-    <a href="/api/events" class="nav-btn" target="_blank" rel="noopener">🔌 API</a>
-    <button id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" aria-label="Toggle dark/light theme">🌙 Dark</button>
-  </nav>
 </header>
 
 <main id="main-content" role="main" class="container">
+  <div class="hero-badge">
+    <span class="live-dot-wrap"><span class="live-dot"></span><span class="live-ping"></span></span>
+    Live &middot; Refreshed Daily &middot; Bengaluru Student Edition
+  </div>
+
+  <h1 class="hero-title">
+    <span class="count">{total_upcoming}</span> hackathons are open right now.
+  </h1>
+  <p class="hero-subtitle">
+    Every hackathon worth your time, in one place. We track Bangalore &amp; global student hackathons, quality-score each event, and blackout-filter your exam and test dates.
+  </p>
+
+  <div class="hero-metrics">
+    <a href="/dashboard" class="hero-metric-card">
+      <div class="metric-num">{total_upcoming}</div>
+      <div class="metric-label">open now</div>
+    </a>
+    <a href="/dashboard?filter=bengaluru" class="hero-metric-card">
+      <div class="metric-num teal">{bangalore_count}</div>
+      <div class="metric-label">bengaluru</div>
+    </a>
+    <a href="/dashboard?filter=closing_soon" class="hero-metric-card">
+      <div class="metric-num rose">{closing_soon_count}</div>
+      <div class="metric-label">closing soon</div>
+    </a>
+    <a href="/dashboard?filter=tracked" class="hero-metric-card">
+      <div class="metric-num gold">{tracked_count}</div>
+      <div class="metric-label">shortlisted</div>
+    </a>
+  </div>
+
   {next_event_html}
-  {metrics_html}
 
-  <div class="toolbar">
-    <div class="toolbar-top">
-      <nav class="filter-tabs" aria-label="Quick Filter Views">
-        <a href="/dashboard" class="tab-link {'active' if not current_filter else ''}">All Upcoming ({total_upcoming})</a>
-        <a href="/dashboard?filter=eligible" class="tab-link {'active' if current_filter == 'eligible' else ''}">✓ Eligible ({eligible_count})</a>
-        <a href="/dashboard?filter=bengaluru" class="tab-link {'active' if current_filter == 'bengaluru' else ''}">📍 Bengaluru ({bangalore_count})</a>
-        <a href="/dashboard?filter=free_weekend" class="tab-link {'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend</a>
-        <a href="/dashboard?filter=high" class="tab-link {'active' if current_filter == 'high' else ''}">🔥 High Priority</a>
-        <a href="/dashboard?filter=unverified" class="tab-link {'active' if current_filter == 'unverified' else ''}">⚠️ Needs Verification ({unverified_count})</a>
-        <a href="/dashboard?filter=tracked" class="tab-link {'active' if current_filter == 'tracked' else ''}">📌 Shortlisted ({tracked_count})</a>
-        <a href="/dashboard?filter=applied" class="tab-link {'active' if current_filter == 'applied' else ''}">🎯 Applied ({applied_count})</a>
-        <a href="/dashboard?filter=excluded" class="tab-link {'active' if current_filter == 'excluded' else ''}">⛔ Blackout Excluded ({blackout_excluded})</a>
-      </nav>
-
-      <div class="search-and-view">
-        <div class="search-box">
-          <span aria-hidden="true">🔍</span>
-          <input type="search" id="radarSearch" placeholder="Search hackathons, hosts, topics..." aria-label="Search opportunities" oninput="filterEvents()">
-          <kbd class="kbd-hint" title="Press / to focus">/</kbd>
-          <span id="searchCount" style="font-size:11px; font-weight:700; color:var(--teal-primary);"></span>
+  <div class="radar-box">
+    <div class="radar-box-header">
+      <div class="filter-pills">
+        <a href="/dashboard" class="filter-pill {'active' if not current_filter else ''}">All Open ({total_upcoming})</a>
+        <a href="/dashboard?filter=bengaluru" class="filter-pill {'active' if current_filter == 'bengaluru' else ''}">📍 Bengaluru ({bangalore_count})</a>
+        <a href="/dashboard?filter=eligible" class="filter-pill {'active' if current_filter == 'eligible' else ''}">✓ Student Eligible ({eligible_count})</a>
+        <a href="/dashboard?filter=tracked" class="filter-pill {'active' if current_filter == 'tracked' else ''}">📌 Shortlisted ({tracked_count})</a>
+        <a href="/dashboard?filter=free_weekend" class="filter-pill {'active' if current_filter == 'free_weekend' else ''}">⚡ Free &amp; Weekend</a>
+        <a href="/dashboard?filter=high" class="filter-pill {'active' if current_filter == 'high' else ''}">🔥 High Priority</a>
+        <a href="/dashboard?filter=excluded" class="filter-pill {'active' if current_filter == 'excluded' else ''}">⛔ Blackouts ({blackout_excluded})</a>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div class="search-input-wrap">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" id="radarSearch" placeholder="Search hackathons, hosts, topics..." oninput="filterEvents()">
+          <span class="kbd">/</span>
         </div>
-        <div class="view-toggle" role="group" aria-label="View switcher">
-          <button id="btnViewGrid" class="view-btn active" onclick="setViewMode('grid')" title="Grid Card View">▦</button>
-          <button id="btnViewTable" class="view-btn" onclick="setViewMode('table')" title="Compact Table View">☰</button>
+        <div style="display:inline-flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden;">
+          <button id="btnViewList" class="btn-shortlist-action active" onclick="setViewMode('list')" title="List View" style="border:none; border-radius:0;">☰</button>
+          <button id="btnViewGrid" class="btn-shortlist-action" onclick="setViewMode('grid')" title="Card Grid View" style="border:none; border-radius:0;">▦</button>
         </div>
       </div>
     </div>
 
-    <div class="toolbar-secondary">
-      <span>Filters:</span>
-      <select id="filterLocation" class="filter-select" onchange="filterEvents()">
-        <option value="all">Location: All</option>
-        <option value="bangalore">📍 Bengaluru Priority</option>
-      </select>
-      <select id="filterMode" class="filter-select" onchange="filterEvents()">
-        <option value="all">Format: All</option>
-        <option value="in-person">In-Person Only</option>
-        <option value="online">Online Only</option>
-        <option value="hybrid">Hybrid</option>
-      </select>
-      <select id="sortSelect" class="filter-select" onchange="filterEvents()">
-        <option value="score">Sort by: Highest Match</option>
-        <option value="date">Sort by: Date Soonest</option>
-        <option value="title">Sort by: Title A-Z</option>
-      </select>
-      <div style="margin-left:auto; font-size:12px; color:var(--text-muted);">
-        Showing <strong id="visibleSummaryCount">{len(events)}</strong> opportunities
-      </div>
+    <div id="hackathonList">
+      {rows_html if rows_html else '<div style="padding:40px; text-align:center; color:var(--text-muted);">No hackathons matching this filter.</div>'}
     </div>
-  </div>
 
-  <div id="cardsContainer" class="cards-grid">
-    {cards_html if cards_html else ""}
-    <div id="emptyCardState" class="empty-state" style="{'display:none;' if cards_html else 'display:block;'}">
-      <div class="empty-state-icon">🔍</div>
-      <h3 class="empty-state-title">No opportunities found</h3>
-      <p class="empty-state-desc">Try clearing your search query or switching filter tabs.</p>
-      <button class="btn btn-primary-link" onclick="resetFilters()">Reset Filters</button>
+    <div id="cardsContainer" class="cards-grid" style="display:none; padding:18px;">
+      {cards_html}
     </div>
-  </div>
-
-  <div id="tableContainer" class="table-wrap" style="display:none;">
-    <table role="table">
-      <thead>
-        <tr>
-          <th scope="col">Priority &amp; Status</th>
-          <th scope="col" style="text-align:center;">Score</th>
-          <th scope="col">Hackathon &amp; Recommendation Rationale</th>
-          <th scope="col">Eligibility</th>
-          <th scope="col">Deadline</th>
-          <th scope="col">State</th>
-          <th scope="col" style="text-align:right;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows_html if rows_html else '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-muted);">No events found matching the selected criteria.</td></tr>'}
-      </tbody>
-    </table>
   </div>
 </main>
 

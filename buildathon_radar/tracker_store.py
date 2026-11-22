@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
+import json
 import os
+import re
 import secrets
 import sqlite3
 from datetime import datetime as _datetime
@@ -56,6 +60,9 @@ CREATE TABLE IF NOT EXISTS events (
     outcome               TEXT
                           CHECK (outcome IS NULL OR outcome IN
                                  ('did_not_participate', 'participated', 'won')),
+    blackout_conflict     INTEGER DEFAULT 0,
+    conflict_details      TEXT DEFAULT '[]',
+    date_status           TEXT DEFAULT 'verified',
     first_seen            TEXT NOT NULL,
     last_verified         TEXT,
     tracked_at            TEXT,
@@ -73,10 +80,465 @@ CREATE TABLE IF NOT EXISTS action_log (
     occurred_at  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS blackout_dates (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    title        TEXT NOT NULL,
+    start_date   TEXT NOT NULL,
+    end_date     TEXT NOT NULL,
+    category     TEXT NOT NULL,
+    reason       TEXT,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS discovery_sources (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key        TEXT UNIQUE NOT NULL,
+    name              TEXT NOT NULL,
+    category          TEXT NOT NULL,
+    discovery_method  TEXT NOT NULL,
+    confidence_level  TEXT NOT NULL,
+    enabled           INTEGER NOT NULL DEFAULT 1,
+    last_scan         TEXT,
+    events_discovered INTEGER NOT NULL DEFAULT 0,
+    success_count     INTEGER NOT NULL DEFAULT 0,
+    fail_count        INTEGER NOT NULL DEFAULT 0,
+    last_error        TEXT,
+    updated_at        TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS discovery_scans (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp          TEXT NOT NULL,
+    duration_seconds   REAL NOT NULL DEFAULT 0.0,
+    total_sources      INTEGER NOT NULL DEFAULT 0,
+    successful_sources INTEGER NOT NULL DEFAULT 0,
+    failed_sources     INTEGER NOT NULL DEFAULT 0,
+    new_events         INTEGER NOT NULL DEFAULT 0,
+    updated_events     INTEGER NOT NULL DEFAULT 0,
+    details            TEXT DEFAULT '{}'
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_state ON events(state);
 CREATE INDEX IF NOT EXISTS idx_events_priority ON events(priority);
 CREATE INDEX IF NOT EXISTS idx_events_deadline ON events(registration_deadline);
+CREATE INDEX IF NOT EXISTS idx_blackout_dates ON blackout_dates(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_blackout_enabled ON blackout_dates(enabled);
+CREATE INDEX IF NOT EXISTS idx_sources_key ON discovery_sources(source_key);
+CREATE INDEX IF NOT EXISTS idx_sources_enabled ON discovery_sources(enabled);
 """
+
+# Initial seed data for the personal blackout calendar
+INITIAL_BLACKOUT_ENTRIES = [
+    # Existing Personal Blackout Dates (2026)
+    {
+        "title": "Personal Commitment (15 Nov)",
+        "start_date": "2026-11-15",
+        "end_date": "2026-11-15",
+        "category": "Personal",
+        "reason": "Personal commitment blackout date",
+    },
+    {
+        "title": "Personal Blackout Period (26-30 Nov)",
+        "start_date": "2026-11-26",
+        "end_date": "2026-11-30",
+        "category": "Personal",
+        "reason": "Personal commitment continuous blackout period",
+    },
+    {
+        "title": "Personal Commitment (6 Dec)",
+        "start_date": "2026-12-06",
+        "end_date": "2026-12-06",
+        "category": "Personal",
+        "reason": "Personal commitment blackout date",
+    },
+    {
+        "title": "Personal Blackout Period (10-16 Dec)",
+        "start_date": "2026-12-10",
+        "end_date": "2026-12-16",
+        "category": "Personal",
+        "reason": "Personal commitment continuous blackout period",
+    },
+    # ALLEN JEE Examination and Test Dates (2026)
+    {
+        "title": "Internal Test 1",
+        "start_date": "2026-05-06",
+        "end_date": "2026-05-06",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 1",
+    },
+    {
+        "title": "Internal Test 1",
+        "start_date": "2026-06-07",
+        "end_date": "2026-06-07",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 1",
+    },
+    {
+        "title": "Internal Test 2",
+        "start_date": "2026-06-28",
+        "end_date": "2026-06-28",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 2",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2026-07-05",
+        "end_date": "2026-07-05",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 3",
+        "start_date": "2026-07-19",
+        "end_date": "2026-07-19",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 3",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2026-07-26",
+        "end_date": "2026-07-26",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 4",
+        "start_date": "2026-08-09",
+        "end_date": "2026-08-09",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 4",
+    },
+    {
+        "title": "Optional Main Test",
+        "start_date": "2026-08-19",
+        "end_date": "2026-08-19",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Main Test",
+    },
+    {
+        "title": "Major Internal Test 1",
+        "start_date": "2026-08-30",
+        "end_date": "2026-08-30",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Major Internal Test 1",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2026-09-06",
+        "end_date": "2026-09-06",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 5",
+        "start_date": "2026-09-20",
+        "end_date": "2026-09-20",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 5",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2026-09-27",
+        "end_date": "2026-09-27",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 6",
+        "start_date": "2026-10-11",
+        "end_date": "2026-10-11",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 6",
+    },
+    {
+        "title": "Optional Main Test",
+        "start_date": "2026-10-18",
+        "end_date": "2026-10-18",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Main Test",
+    },
+    {
+        "title": "Internal Test 7",
+        "start_date": "2026-11-15",
+        "end_date": "2026-11-15",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 7",
+    },
+    {
+        "title": "Major Internal Test 2",
+        "start_date": "2026-11-29",
+        "end_date": "2026-11-29",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Major Internal Test 2",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2026-12-06",
+        "end_date": "2026-12-06",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 8",
+        "start_date": "2026-12-20",
+        "end_date": "2026-12-20",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 8",
+    },
+    {
+        "title": "Optional Main Test",
+        "start_date": "2026-12-27",
+        "end_date": "2026-12-27",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Main Test",
+    },
+    # ALLEN JEE Examination Dates (2027)
+    {
+        "title": "Internal Test 9",
+        "start_date": "2027-01-10",
+        "end_date": "2027-01-10",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 9",
+    },
+    {
+        "title": "Optional Advanced Test",
+        "start_date": "2027-01-17",
+        "end_date": "2027-01-17",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Optional Advanced Test",
+    },
+    {
+        "title": "Internal Test 10",
+        "start_date": "2027-01-31",
+        "end_date": "2027-01-31",
+        "category": "Academic Test",
+        "reason": "ALLEN JEE Internal Test 10",
+    },
+    # Examination Period (Continuous 2027)
+    {
+        "title": "Examination Period (Week 1: Feb 8-14)",
+        "start_date": "2027-02-08",
+        "end_date": "2027-02-14",
+        "category": "Examination Period",
+        "reason": "Continuous academic examination blackout period",
+    },
+    {
+        "title": "Examination Period (Week 2: Feb 15-21)",
+        "start_date": "2027-02-15",
+        "end_date": "2027-02-21",
+        "category": "Examination Period",
+        "reason": "Continuous academic examination blackout period",
+    },
+    {
+        "title": "Examination Period (Week 3: Feb 22-28)",
+        "start_date": "2027-02-22",
+        "end_date": "2027-02-28",
+        "category": "Examination Period",
+        "reason": "Continuous academic examination blackout period",
+    },
+]
+
+# Initial discovery sources covering dedicated platforms, social, event directories, communities, colleges, and search
+INITIAL_DISCOVERY_SOURCES = [
+    # 1. Dedicated Hackathon Platforms
+    {
+        "source_key": "devpost",
+        "name": "Devpost",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "API & Public Feed",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "unstop",
+        "name": "Unstop",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "API & Public Search",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "devfolio",
+        "name": "Devfolio",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "API & Platform Feed",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "mlh",
+        "name": "Major League Hacking (MLH)",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Season Schedule",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "hackerearth",
+        "name": "HackerEarth",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Public Challenges API",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "hack2skill",
+        "name": "Hack2skill",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Platform Index",
+        "confidence_level": "Medium-High",
+    },
+    {
+        "source_key": "dorahacks",
+        "name": "DoraHacks",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Bounties & Hackathons API",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "ethglobal",
+        "name": "ETHGlobal",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Calendar Index",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "hackathon_com",
+        "name": "Hackathon.com",
+        "category": "Dedicated Hackathon Platforms",
+        "discovery_method": "Directory Feed",
+        "confidence_level": "Medium",
+    },
+    # 2. Professional & Social Networks
+    {
+        "source_key": "linkedin",
+        "name": "LinkedIn Announcements",
+        "category": "Professional and Social Networks",
+        "discovery_method": "Public Search & Feed Indexing",
+        "confidence_level": "Medium-High",
+    },
+    {
+        "source_key": "twitter",
+        "name": "X (Twitter) Announcements",
+        "category": "Professional and Social Networks",
+        "discovery_method": "Public Announcement Feeds",
+        "confidence_level": "Medium",
+    },
+    {
+        "source_key": "reddit",
+        "name": "Reddit Developer Communities",
+        "category": "Professional and Social Networks",
+        "discovery_method": "r/developersIndia & r/hackathons",
+        "confidence_level": "Medium",
+    },
+    # 3. Event Discovery Platforms
+    {
+        "source_key": "meetup",
+        "name": "Meetup Bangalore Tech",
+        "category": "Event Discovery Platforms",
+        "discovery_method": "Public Developer Groups Feed",
+        "confidence_level": "Medium-High",
+    },
+    {
+        "source_key": "eventbrite",
+        "name": "Eventbrite India",
+        "category": "Event Discovery Platforms",
+        "discovery_method": "Public Events Search",
+        "confidence_level": "Medium-High",
+    },
+    {
+        "source_key": "townscript",
+        "name": "Townscript",
+        "category": "Event Discovery Platforms",
+        "discovery_method": "Tech Events Index",
+        "confidence_level": "Medium-High",
+    },
+    {
+        "source_key": "allevents",
+        "name": "AllEvents Bangalore",
+        "category": "Event Discovery Platforms",
+        "discovery_method": "Developer Category Feed",
+        "confidence_level": "Medium",
+    },
+    {
+        "source_key": "tentimes",
+        "name": "10times",
+        "category": "Event Discovery Platforms",
+        "discovery_method": "Tech Conferences & Hackathons",
+        "confidence_level": "Medium",
+    },
+    # 4. Developer and Technology Communities
+    {
+        "source_key": "gdg",
+        "name": "Google Developer Groups (GDG & GDSC)",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "Community Chapter Events",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "microsoft_reactor",
+        "name": "Microsoft Reactor Bengaluru",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "Reactor Calendar & Challenges",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "aws_community",
+        "name": "AWS User Groups India",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "Community Group Feeds",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "github_community",
+        "name": "GitHub Education & Campus",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "Global Campus Announcements",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "nvidia_dev",
+        "name": "NVIDIA Developer Contests",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "AI Developer Contests",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "foss_united",
+        "name": "FOSS United",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "FOSS Hack & City Meetups",
+        "confidence_level": "High",
+    },
+    {
+        "source_key": "cncf",
+        "name": "CNCF Community Groups",
+        "category": "Developer and Technology Communities",
+        "discovery_method": "Cloud Native Hackathons",
+        "confidence_level": "High",
+    },
+    # 5. Indian College and University Sources
+    {
+        "source_key": "indian_colleges",
+        "name": "Indian Engineering Colleges & Tech Fests",
+        "category": "Indian College and University Sources",
+        "discovery_method": "IIT/NIT/IIIT & Bangalore Colleges",
+        "confidence_level": "High",
+    },
+    # 6. Company and Startup Sources
+    {
+        "source_key": "tech_companies",
+        "name": "Top AI Companies & Indian Startups",
+        "category": "Company and Startup Sources",
+        "discovery_method": "Official Developer Challenges",
+        "confidence_level": "High",
+    },
+    # 7. Search Engine-Based Discovery Pipeline
+    {
+        "source_key": "search_discovery",
+        "name": "Targeted Web Search Engine Discovery",
+        "category": "Search Engine-Based Discovery",
+        "discovery_method": "Multi-Query Targeted Web Search",
+        "confidence_level": "Medium-High",
+    },
+]
 
 
 def _now_ist():
@@ -100,7 +562,6 @@ def normalize_url(url: str) -> str:
         scheme = parsed.scheme.lower() or "https"
         netloc = parsed.netloc.lower()
 
-        # Filter out common marketing/tracking parameters
         tracking_keys = {
             "utm_source", "utm_medium", "utm_campaign", "utm_term",
             "utm_content", "ref", "fbclid", "gclid", "mc_eid", "_hsenc"
@@ -118,6 +579,153 @@ def normalize_url(url: str) -> str:
         return urlunparse((scheme, netloc, path, parsed.params, clean_query, ""))
     except Exception:
         return u.rstrip("/")
+
+
+def _seed_blackout_dates_if_empty(conn: sqlite3.Connection):
+    """Initializes the blackout_dates table with supplied dates if empty."""
+    cur = conn.execute("SELECT COUNT(*) as c FROM blackout_dates")
+    if cur.fetchone()["c"] == 0:
+        now = _now_ist()
+        for item in INITIAL_BLACKOUT_ENTRIES:
+            conn.execute(
+                """
+                INSERT INTO blackout_dates (title, start_date, end_date, category, reason, enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                """,
+                (
+                    item["title"],
+                    item["start_date"],
+                    item["end_date"],
+                    item["category"],
+                    item.get("reason", ""),
+                    now,
+                    now,
+                ),
+            )
+        conn.commit()
+
+
+def _seed_discovery_sources_if_empty(conn: sqlite3.Connection):
+    """Initializes the discovery_sources table if empty."""
+    cur = conn.execute("SELECT COUNT(*) as c FROM discovery_sources")
+    if cur.fetchone()["c"] == 0:
+        now = _now_ist()
+        for s in INITIAL_DISCOVERY_SOURCES:
+            conn.execute(
+                """
+                INSERT INTO discovery_sources (
+                    source_key, name, category, discovery_method, confidence_level,
+                    enabled, last_scan, events_discovered, success_count, fail_count,
+                    last_error, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, 1, NULL, 0, 0, 0, NULL, ?)
+                """,
+                (s["source_key"], s["name"], s["category"], s["discovery_method"], s["confidence_level"], now),
+            )
+        conn.commit()
+
+
+def check_event_date_overlap(event_start: str | None, event_end: str | None, blackouts: list) -> tuple:
+    """Checks whether an event's date window overlaps with any enabled blackout entry.
+
+    Returns:
+        (is_conflict, conflict_list, date_status, human_readable_summary)
+    """
+    if not event_start:
+        return False, [], "uncertain", "⚠️ Dates Unverified: Schedule not published; cannot confirm eligibility."
+
+    es = str(event_start)[:10]
+    ee = str(event_end)[:10] if event_end else es
+    if ee < es:
+        es, ee = ee, es
+
+    conflicts = []
+    for b in blackouts:
+        enabled = b["enabled"] if isinstance(b, sqlite3.Row) or isinstance(b, dict) else 1
+        if not enabled:
+            continue
+        bs = str(b["start_date"])[:10]
+        be = str(b["end_date"])[:10]
+        o_start = max(es, bs)
+        o_end = min(ee, be)
+        if o_start <= o_end:
+            overlap_str = f"{o_start} to {o_end}" if o_start != o_end else o_start
+            b_range = f"{bs} to {be}" if bs != be else bs
+            conflicts.append({
+                "blackout_id": b["id"] if "id" in (b.keys() if hasattr(b, "keys") else {}) else None,
+                "title": b["title"],
+                "category": b["category"],
+                "reason": b.get("reason") or b["title"],
+                "blackout_range": b_range,
+                "overlap_dates": overlap_str,
+            })
+
+    is_conflict = len(conflicts) > 0
+    if is_conflict:
+        details_str = "; ".join([f"{c['title']} ({c['overlap_dates']})" for c in conflicts])
+        summary = f"⚠️ Blackout Conflict: Overlaps with {details_str}"
+    else:
+        summary = ""
+
+    return is_conflict, conflicts, "verified", summary
+
+
+def recalculate_event_blackout_conflicts(conn: sqlite3.Connection):
+    """Recomputes blackout conflicts for all stored events against active blackout dates."""
+    cur = conn.execute("SELECT * FROM blackout_dates WHERE enabled = 1 ORDER BY start_date ASC")
+    active_blackouts = [dict(r) for r in cur.fetchall()]
+
+    events = conn.execute("SELECT event_id, event_start, event_end, priority, score, why FROM events").fetchall()
+
+    for e in events:
+        eid = e["event_id"]
+        is_conflict, conflicts, date_status, summary = check_event_date_overlap(
+            e["event_start"], e["event_end"], active_blackouts
+        )
+
+        why_text = e["why"] or ""
+        # Strip existing blackout conflict tags from why
+        clean_why = re.sub(
+            r"(?:Unavailable \(Blackout Conflict\)|⚠️ Blackout Conflict[^\|]*|Overlaps with [^\|]*)(?:\s*\|\s*)?",
+            "",
+            why_text,
+            flags=re.IGNORECASE,
+        ).strip(" |")
+
+        if is_conflict:
+            blackout_conflict = 1
+            conflict_details = json.dumps(conflicts)
+            priority = "CONFLICT (UNAVAILABLE)"
+            new_why = f"Unavailable (Blackout Conflict) | {summary}" + (f" | {clean_why}" if clean_why else "")
+        else:
+            blackout_conflict = 0
+            conflict_details = "[]"
+            # Restore priority if previously marked conflict
+            if e["priority"] == "CONFLICT (UNAVAILABLE)":
+                sc = e["score"] or 0
+                if sc >= 70:
+                    priority = "HIGH PRIORITY"
+                elif sc >= 45:
+                    priority = "MEDIUM PRIORITY"
+                else:
+                    priority = "LOW PRIORITY"
+                new_why = clean_why or "Student-eligible opportunity"
+            else:
+                priority = e["priority"]
+                new_why = clean_why or why_text
+
+        if date_status == "uncertain" and "⚠️ Dates Unverified" not in new_why:
+            new_why = f"⚠️ Dates Unverified | {new_why}".strip(" |")
+
+        conn.execute(
+            """
+            UPDATE events
+            SET blackout_conflict = ?, conflict_details = ?, date_status = ?, priority = ?, why = ?
+            WHERE event_id = ?
+            """,
+            (blackout_conflict, conflict_details, date_status, priority, new_why, eid),
+        )
+    conn.commit()
 
 
 def _migrate_schema_if_needed(conn: sqlite3.Connection):
@@ -140,6 +748,14 @@ def _migrate_schema_if_needed(conn: sqlite3.Connection):
         "why": "TEXT",
         "last_verified": "TEXT",
         "rejected_at": "TEXT",
+        "blackout_conflict": "INTEGER DEFAULT 0",
+        "conflict_details": "TEXT DEFAULT '[]'",
+        "date_status": "TEXT DEFAULT 'verified'",
+        "announcement_url": "TEXT",
+        "discovery_sources": "TEXT DEFAULT '[]'",
+        "confidence": "TEXT DEFAULT 'Medium'",
+        "tech_categories": "TEXT DEFAULT '[]'",
+        "verification_status": "TEXT DEFAULT 'verified'",
     }
 
     for col_name, col_type in columns_to_add.items():
@@ -148,7 +764,19 @@ def _migrate_schema_if_needed(conn: sqlite3.Connection):
                 conn.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_type}")
             except sqlite3.OperationalError:
                 pass
+
+    try:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_conflict ON events(blackout_conflict)")
+    except Exception:
+        pass
+
     conn.commit()
+    _seed_blackout_dates_if_empty(conn)
+    _seed_discovery_sources_if_empty(conn)
+    try:
+        recalculate_event_blackout_conflicts(conn)
+    except Exception:
+        pass
 
 
 def connect(db_path=None):
@@ -164,10 +792,231 @@ def connect(db_path=None):
     return conn
 
 
+get_connection = connect
+
+
+def get_blackout_dates(conn: sqlite3.Connection, enabled_only: bool = False, category: str | None = None) -> list:
+    """Retrieves stored blackout dates."""
+    query = "SELECT * FROM blackout_dates WHERE 1=1"
+    params = []
+    if enabled_only:
+        query += " AND enabled = 1"
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY start_date ASC, id ASC"
+    return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def get_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM blackout_dates WHERE id = ?", (blackout_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def add_blackout_date(
+    conn: sqlite3.Connection,
+    title: str,
+    start_date: str,
+    end_date: str,
+    category: str,
+    reason: str | None = None,
+    enabled: int = 1,
+) -> int:
+    """Adds a new blackout date or continuous range and recomputes event conflicts."""
+    now = _now_ist()
+    s = start_date[:10]
+    e = (end_date or start_date)[:10]
+    if e < s:
+        s, e = e, s
+
+    cur = conn.execute(
+        """
+        INSERT INTO blackout_dates (title, start_date, end_date, category, reason, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (title.strip(), s, e, category.strip(), (reason or "").strip(), 1 if enabled else 0, now, now),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    recalculate_event_blackout_conflicts(conn)
+    return new_id
+
+
+def update_blackout_date(
+    conn: sqlite3.Connection,
+    blackout_id: int,
+    title: str,
+    start_date: str,
+    end_date: str,
+    category: str,
+    reason: str | None = None,
+    enabled: int = 1,
+) -> bool:
+    """Updates an existing blackout date entry and recomputes conflicts."""
+    now = _now_ist()
+    s = start_date[:10]
+    e = (end_date or start_date)[:10]
+    if e < s:
+        s, e = e, s
+
+    cur = conn.execute(
+        """
+        UPDATE blackout_dates
+        SET title = ?, start_date = ?, end_date = ?, category = ?, reason = ?, enabled = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (title.strip(), s, e, category.strip(), (reason or "").strip(), 1 if enabled else 0, now, blackout_id),
+    )
+    conn.commit()
+    if cur.rowcount > 0:
+        recalculate_event_blackout_conflicts(conn)
+        return True
+    return False
+
+
+def delete_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> bool:
+    """Deletes a blackout date and recomputes event conflicts."""
+    cur = conn.execute("DELETE FROM blackout_dates WHERE id = ?", (blackout_id,))
+    conn.commit()
+    if cur.rowcount > 0:
+        recalculate_event_blackout_conflicts(conn)
+        return True
+    return False
+
+
+def toggle_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> bool:
+    """Toggles enabled state of a blackout entry and recomputes event conflicts."""
+    row = conn.execute("SELECT enabled FROM blackout_dates WHERE id = ?", (blackout_id,)).fetchone()
+    if not row:
+        return False
+    new_enabled = 0 if row["enabled"] else 1
+    now = _now_ist()
+    conn.execute(
+        "UPDATE blackout_dates SET enabled = ?, updated_at = ? WHERE id = ?",
+        (new_enabled, now, blackout_id),
+    )
+    conn.commit()
+    recalculate_event_blackout_conflicts(conn)
+    return True
+
+
+def get_discovery_sources(conn: sqlite3.Connection, enabled_only: bool = False, category: str | None = None) -> list:
+    """Retrieves all monitored discovery sources."""
+    query = "SELECT * FROM discovery_sources WHERE 1=1"
+    params = []
+    if enabled_only:
+        query += " AND enabled = 1"
+    if category:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY id ASC"
+    return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+
+def get_discovery_source(conn: sqlite3.Connection, source_key: str) -> dict | None:
+    row = conn.execute("SELECT * FROM discovery_sources WHERE source_key = ?", (source_key,)).fetchone()
+    return dict(row) if row else None
+
+
+def toggle_discovery_source(conn: sqlite3.Connection, source_key: str) -> bool | None:
+    row = conn.execute("SELECT enabled FROM discovery_sources WHERE source_key = ?", (source_key,)).fetchone()
+    if not row:
+        return None
+    new_enabled = 0 if row["enabled"] else 1
+    now = _now_ist()
+    conn.execute(
+        "UPDATE discovery_sources SET enabled = ?, updated_at = ? WHERE source_key = ?",
+        (new_enabled, now, source_key),
+    )
+    conn.commit()
+    return bool(new_enabled)
+
+
+def update_discovery_source_status(
+    conn: sqlite3.Connection,
+    source_key: str,
+    success: bool,
+    events_count: int = 0,
+    error: str | None = None,
+    error_msg: str | None = None,
+):
+    now = _now_ist()
+    err_text = error or error_msg
+    if success:
+        conn.execute(
+            """
+            UPDATE discovery_sources
+            SET last_scan = ?,
+                events_discovered = events_discovered + ?,
+                success_count = success_count + 1,
+                last_error = NULL,
+                updated_at = ?
+            WHERE source_key = ?
+            """,
+            (now, events_count, now, source_key),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE discovery_sources
+            SET last_scan = ?,
+                fail_count = fail_count + 1,
+                last_error = ?,
+                updated_at = ?
+            WHERE source_key = ?
+            """,
+            (now, str(err_text or "Scan error"), now, source_key),
+        )
+    conn.commit()
+
+
+def log_discovery_scan(conn: sqlite3.Connection, scan_data: dict) -> int:
+    now = _now_ist()
+    cur = conn.execute(
+        """
+        INSERT INTO discovery_scans (
+            timestamp, duration_seconds, total_sources, successful_sources,
+            failed_sources, new_events, updated_events, details
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            now,
+            float(scan_data.get("duration_seconds", 0.0)),
+            int(scan_data.get("total_sources", 0)),
+            int(scan_data.get("successful_sources", 0)),
+            int(scan_data.get("failed_sources", 0)),
+            int(scan_data.get("new_events", 0)),
+            int(scan_data.get("updated_events", 0)),
+            json.dumps(scan_data.get("details", {})),
+        ),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_recent_discovery_scans(conn: sqlite3.Connection, limit: int = 10) -> list:
+    rows = conn.execute(
+        "SELECT * FROM discovery_scans ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_last_discovery_scan(conn: sqlite3.Connection) -> dict | None:
+    row = conn.execute("SELECT * FROM discovery_scans ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
+
+
 def upsert_events(conn, items, evaluated_map=None):
     """Upserts full event metadata into the database while preserving existing user states.
     evaluated_map is optional mapping of event_id -> evaluated dict with score, priority, why."""
     now = _now_ist()
+    # Fetch active blackout dates for overlap check during upsert
+    try:
+        active_blackouts = get_blackout_dates(conn, enabled_only=True)
+    except Exception:
+        active_blackouts = []
+
     for item in items:
         event_id = item.get("event_id")
         if not event_id:
@@ -181,15 +1030,69 @@ def upsert_events(conn, items, evaluated_map=None):
         age_restrictions = eval_info.get("age_restrictions") or item.get("age_restrictions") or "None specified"
         norm_url = normalize_url(item.get("url") or "")
 
+        start_date = item.get("event_start")
+        end_date = item.get("event_end")
+
+        announcement_url = item.get("announcement_url") or item.get("original_url") or ""
+        confidence = item.get("confidence") or "Medium"
+        tech_cats = json.dumps(item.get("tech_categories") or [])
+        verification_status = item.get("verification_status") or "verified"
+
+        incoming_source_entry = {
+            "source": item.get("source") or "Unknown",
+            "url": norm_url,
+            "announcement_url": announcement_url,
+            "discovered_at": now,
+        }
+
+        existing_row = conn.execute(
+            "SELECT discovery_sources, announcement_url, url FROM events WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+
+        merged_sources = [incoming_source_entry]
+        if existing_row:
+            try:
+                prev_sources = json.loads(existing_row["discovery_sources"] or "[]")
+                if isinstance(prev_sources, list):
+                    seen_urls = {incoming_source_entry["url"]}
+                    for ps in prev_sources:
+                        u = ps.get("url")
+                        if u and u not in seen_urls:
+                            seen_urls.add(u)
+                            merged_sources.append(ps)
+            except Exception:
+                pass
+            if not announcement_url and existing_row["announcement_url"]:
+                announcement_url = existing_row["announcement_url"]
+
+        discovery_sources_str = json.dumps(merged_sources)
+
+        is_conflict, conflicts, date_status, summary = check_event_date_overlap(start_date, end_date, active_blackouts)
+        blackout_conflict = 1 if is_conflict else 0
+        conflict_details = json.dumps(conflicts)
+
+        if is_conflict:
+            priority = "CONFLICT (UNAVAILABLE)"
+            clean_why = re.sub(
+                r"(?:Unavailable \(Blackout Conflict\)|⚠️ Blackout Conflict[^\|]*|Overlaps with [^\|]*)(?:\s*\|\s*)?",
+                "",
+                why,
+                flags=re.IGNORECASE,
+            ).strip(" |")
+            why = f"Unavailable (Blackout Conflict) | {summary}" + (f" | {clean_why}" if clean_why else "")
+
         conn.execute(
             """
             INSERT INTO events (
                 event_id, title, url, host, source, summary, category,
                 location, mode, event_start, event_end, registration_deadline,
                 team_size, eligibility, age_restrictions, prize, priority,
-                score, why, state, first_seen, last_verified, updated_at
+                score, why, state, blackout_conflict, conflict_details, date_status,
+                announcement_url, discovery_sources, confidence, tech_categories,
+                verification_status, first_seen, last_verified, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seen', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 title                 = excluded.title,
                 url                   = excluded.url,
@@ -209,6 +1112,14 @@ def upsert_events(conn, items, evaluated_map=None):
                 priority              = excluded.priority,
                 score                 = excluded.score,
                 why                   = excluded.why,
+                blackout_conflict     = excluded.blackout_conflict,
+                conflict_details      = excluded.conflict_details,
+                date_status           = excluded.date_status,
+                announcement_url      = COALESCE(excluded.announcement_url, events.announcement_url),
+                discovery_sources     = excluded.discovery_sources,
+                confidence            = excluded.confidence,
+                tech_categories       = excluded.tech_categories,
+                verification_status   = excluded.verification_status,
                 last_verified         = excluded.last_verified,
                 updated_at            = excluded.updated_at
             """,
@@ -222,8 +1133,8 @@ def upsert_events(conn, items, evaluated_map=None):
                 item.get("category") or "Hackathon",
                 item.get("location") or "Unknown",
                 item.get("mode") or "unknown",
-                item.get("event_start"),
-                item.get("event_end"),
+                start_date,
+                end_date,
                 item.get("registration_deadline"),
                 item.get("team_size") or "3-5 preferred",
                 eligibility,
@@ -232,6 +1143,14 @@ def upsert_events(conn, items, evaluated_map=None):
                 priority,
                 score,
                 why,
+                blackout_conflict,
+                conflict_details,
+                date_status,
+                announcement_url,
+                discovery_sources_str,
+                confidence,
+                tech_cats,
+                verification_status,
                 now,
                 now,
                 now,
@@ -278,14 +1197,17 @@ def apply_action(conn, action, event_id):
         log_action(conn, event_id, action, "unknown_event")
         return "unknown_event", None
 
-    # Track rank to prevent accidental downgrade (except explicit reject)
     current_rank = STATE_RANK.get(row["state"], 0)
     target_rank = STATE_RANK.get(target_state, 0)
     if action != "reject" and current_rank >= target_rank:
         log_action(conn, event_id, action, "noop")
         return "noop", row
 
-    ts_column = "tracked_at" if target_state == "tracked" else ("applied_at" if target_state == "applied" else "rejected_at")
+    ts_column = (
+        "tracked_at"
+        if target_state == "tracked"
+        else ("applied_at" if target_state == "applied" else "rejected_at")
+    )
     conn.execute(
         f"UPDATE events SET state = ?, {ts_column} = ?, updated_at = ? WHERE event_id = ?",
         (target_state, now, now, event_id),
@@ -321,20 +1243,33 @@ def get_applied_open(conn, today_str):
     ).fetchall()
 
 
-def get_all_events(conn, min_date=None):
+def get_all_events(conn, min_date=None, include_conflicts=True):
+    query = "SELECT * FROM events WHERE 1=1"
+    params = []
     if min_date:
-        return conn.execute(
-            """
-            SELECT * FROM events
-            WHERE COALESCE(event_start, event_end, '9999-12-31') >= ?
-            ORDER BY score DESC, updated_at DESC
-            """,
-            (min_date,),
-        ).fetchall()
-    return conn.execute("SELECT * FROM events ORDER BY score DESC, updated_at DESC").fetchall()
+        query += " AND COALESCE(event_start, event_end, '9999-12-31') >= ?"
+        params.append(min_date)
+    if not include_conflicts:
+        query += " AND blackout_conflict = 0"
+    query += " ORDER BY score DESC, updated_at DESC"
+    return conn.execute(query, params).fetchall()
 
 
-def get_events_by_filter(conn, priority=None, state=None, eligibility=None, search=None, limit=100, min_date=None):
+def get_events_by_filter(
+    conn,
+    priority=None,
+    state=None,
+    eligibility=None,
+    search=None,
+    limit=200,
+    min_date=None,
+    blackout_conflict=None,
+    date_status=None,
+    mode=None,
+    location_keyword=None,
+    category=None,
+    order_by=None,
+):
     query = "SELECT * FROM events WHERE 1=1"
     params = []
     if min_date:
@@ -349,21 +1284,46 @@ def get_events_by_filter(conn, priority=None, state=None, eligibility=None, sear
     if eligibility:
         query += " AND eligibility = ?"
         params.append(eligibility)
+    if blackout_conflict is not None:
+        query += " AND blackout_conflict = ?"
+        params.append(int(blackout_conflict))
+    if date_status:
+        query += " AND date_status = ?"
+        params.append(date_status)
+    if mode:
+        query += " AND LOWER(mode) = ?"
+        params.append(mode.lower())
+    if category:
+        query += " AND LOWER(category) = ?"
+        params.append(category.lower())
+    if location_keyword:
+        query += " AND (LOWER(location) LIKE ? OR LOWER(title) LIKE ? OR LOWER(summary) LIKE ?)"
+        lk = f"%{location_keyword.lower()}%"
+        params.extend([lk, lk, lk])
     if search:
-        query += " AND (title LIKE ? OR host LIKE ? OR summary LIKE ? OR why LIKE ?)"
+        query += " AND (title LIKE ? OR host LIKE ? OR summary LIKE ? OR why LIKE ? OR location LIKE ?)"
         s = f"%{search}%"
-        params.extend([s, s, s, s])
+        params.extend([s, s, s, s, s])
 
-    query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC LIMIT ?"
+    # Sorting
+    if order_by == "date":
+        query += " ORDER BY COALESCE(event_start, '9999-12-31') ASC, score DESC"
+    elif order_by == "deadline":
+        query += " ORDER BY COALESCE(registration_deadline, event_start, '9999-12-31') ASC, score DESC"
+    elif order_by == "recent":
+        query += " ORDER BY first_seen DESC, updated_at DESC"
+    elif order_by == "score":
+        query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC"
+    else:
+        query += " ORDER BY score DESC, COALESCE(event_start, '9999-12-31') ASC"
+
+    query += " LIMIT ?"
     params.append(limit)
     return conn.execute(query, params).fetchall()
 
 
 def delete_events_before_date(conn, cutoff_date: str) -> int:
-    """Deletes events starting before cutoff_date (YYYY-MM-DD) and their associated action logs.
-
-    Returns the number of events deleted.
-    """
+    """Deletes events starting before cutoff_date (YYYY-MM-DD) and their associated action logs."""
     with conn:
         conn.execute(
             """
@@ -382,19 +1342,100 @@ def delete_events_before_date(conn, cutoff_date: str) -> int:
         return cur.rowcount
 
 
-def get_upcoming_deadlines(conn, limit=10, min_date=None):
+def get_upcoming_deadlines(conn, limit=10, min_date=None, exclude_conflicts=True):
     today = _datetime.now(IST).strftime("%Y-%m-%d")
     effective_min = max(today, min_date) if min_date else today
-    return conn.execute(
-        """
+    query = """
         SELECT * FROM events
         WHERE (registration_deadline >= ? OR event_start >= ?)
           AND state != 'rejected'
+    """
+    params = [effective_min, effective_min]
+    if exclude_conflicts:
+        query += " AND blackout_conflict = 0"
+    query += """
         ORDER BY COALESCE(registration_deadline, event_start) ASC
         LIMIT ?
-        """,
-        (effective_min, effective_min, limit),
-    ).fetchall()
+    """
+    params.append(limit)
+    return conn.execute(query, params).fetchall()
+
+
+def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
+    """Returns comprehensive aggregated dashboard metrics."""
+    today = _datetime.now(IST).strftime("%Y-%m-%d")
+
+    all_rows = conn.execute("SELECT * FROM events").fetchall()
+    upcoming_rows = [
+        r for r in all_rows
+        if (r["event_end"] or r["event_start"] or "9999-12-31")[:10] >= today
+    ]
+
+    total_upcoming = len(upcoming_rows)
+    blackout_excluded = sum(1 for r in upcoming_rows if r["blackout_conflict"] == 1)
+    eligible_count = sum(
+        1 for r in upcoming_rows
+        if r["blackout_conflict"] == 0
+        and str(r["eligibility"]).upper() == "ELIGIBLE"
+        and r["date_status"] == "verified"
+    )
+    unverified_count = sum(
+        1 for r in upcoming_rows
+        if r["date_status"] == "uncertain" or str(r["eligibility"]).upper() == "UNKNOWN"
+    )
+    tracked_count = sum(1 for r in all_rows if r["state"] == "tracked")
+    applied_count = sum(1 for r in all_rows if r["state"] == "applied")
+
+    # Bangalore upcoming non-conflicted events
+    bengaluru_keywords = ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr", "electronic city"]
+    bengaluru_events = [
+        r for r in upcoming_rows
+        if str(r["mode"]).lower() in ("in-person", "hybrid", "offline")
+        and any(
+            k in str(r["location"]).lower()
+            or k in str(r["summary"]).lower()
+            or k in str(r["title"]).lower()
+            for k in bengaluru_keywords
+        )
+    ]
+    bangalore_count = len(bengaluru_events)
+
+    # Next eligible hackathon
+    eligible_upcoming = [
+        r for r in upcoming_rows
+        if r["blackout_conflict"] == 0
+        and str(r["eligibility"]).upper() == "ELIGIBLE"
+        and r["date_status"] == "verified"
+        and r["state"] != "rejected"
+    ]
+    eligible_upcoming.sort(key=lambda x: (x["event_start"] or "9999-12-31", -int(x["score"] or 0)))
+    next_eligible_event = dict(eligible_upcoming[0]) if eligible_upcoming else None
+
+    # Upcoming deadlines closing within 7 days
+    in_7_days = (_datetime.now(IST) + timedelta(days=7)).strftime("%Y-%m-%d")
+    deadlines_soon = [
+        r for r in upcoming_rows
+        if r["registration_deadline"]
+        and today <= str(r["registration_deadline"])[:10] <= in_7_days
+        and r["blackout_conflict"] == 0
+    ]
+
+    # Recently discovered events (last 5)
+    recent_sorted = sorted(all_rows, key=lambda x: str(x["first_seen"]), reverse=True)
+    recently_discovered = [dict(r) for r in recent_sorted[:5]]
+
+    return {
+        "total_upcoming": total_upcoming,
+        "eligible_count": eligible_count,
+        "blackout_excluded_count": blackout_excluded,
+        "unverified_count": unverified_count,
+        "bangalore_count": bangalore_count,
+        "closing_soon_count": len(deadlines_soon),
+        "tracked_count": tracked_count,
+        "applied_count": applied_count,
+        "next_eligible_event": next_eligible_event,
+        "recently_discovered": recently_discovered,
+    }
 
 
 def get_secret():
