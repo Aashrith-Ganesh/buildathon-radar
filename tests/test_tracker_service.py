@@ -1,11 +1,10 @@
 import pytest
-from fastapi.testclient import TestClient
 
 from buildathon_radar import tracker_service, tracker_store
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch, local_client):
     db_path = str(tmp_path / "tracker.db")
     monkeypatch.setattr(tracker_service, "DB_PATH", db_path)
     conn = tracker_store.connect(db_path)
@@ -21,7 +20,7 @@ def client(tmp_path, monkeypatch):
         }
     ])
     conn.close()
-    return TestClient(tracker_service.app)
+    return local_client(tracker_service.app)
 
 
 def sign(action, event_id):
@@ -30,10 +29,15 @@ def sign(action, event_id):
 
 class TestHealth:
     def test_root_health_page(self, client):
-        resp = client.get("/")
-        assert resp.status_code == 200
-        assert "running" in resp.text.lower()
-        assert "e1" not in resp.text  # no event data on the health page
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code == 307
+        assert resp.headers["location"] == "/dashboard"
+
+
+def record(client, action, event_id="e1"):
+    return client.post("/api/action", json={
+        "action": action, "event_id": event_id, "token": sign(action, event_id),
+    })
 
 
 class TestTrackEndpoint:
@@ -42,7 +46,10 @@ class TestTrackEndpoint:
         resp = client.get(f"/track?event_id=e1&t={token}")
         assert resp.status_code == 200
         assert "Build with Gemma" in resp.text
-        assert "Tracked" in resp.text
+        before = tracker_store.connect(str(tmp_path / "tracker.db"))
+        assert before.execute("SELECT state FROM events WHERE event_id='e1'").fetchone()[0] == "seen"
+        before.close()
+        assert record(client, "track").json()["state"] == "tracked"
 
         conn = tracker_store.connect(str(tmp_path / "tracker.db"))
         row = conn.execute("SELECT * FROM events WHERE event_id='e1'").fetchone()
@@ -53,11 +60,10 @@ class TestTrackEndpoint:
         assert log[0]["result"] == "ok"
 
     def test_repeat_click_is_noop_page_and_only_logs(self, client, tmp_path):
-        token = sign("track", "e1")
-        client.get(f"/track?event_id=e1&t={token}")
-        resp = client.get(f"/track?event_id=e1&t={token}")
+        record(client, "track")
+        resp = record(client, "track")
         assert resp.status_code == 200
-        assert "Already tracked" in resp.text
+        assert resp.json()["result"] == "noop"
 
         conn = tracker_store.connect(str(tmp_path / "tracker.db"))
         log = conn.execute("SELECT * FROM action_log WHERE event_id='e1'").fetchall()
@@ -68,7 +74,7 @@ class TestTrackEndpoint:
         token = sign("track", "does-not-exist")
         resp = client.get(f"/track?event_id=does-not-exist&t={token}")
         assert resp.status_code == 404
-        assert "Unknown event" in resp.text
+        assert "Event not found" in resp.text
 
     def test_bad_token_returns_403_with_no_db_write(self, client, tmp_path):
         resp = client.get("/track?event_id=e1&t=wrongtoken000000000")
@@ -79,8 +85,7 @@ class TestTrackEndpoint:
         row = conn.execute("SELECT * FROM events WHERE event_id='e1'").fetchone()
         assert row["state"] == "seen"  # untouched
         log = conn.execute("SELECT * FROM action_log WHERE event_id='e1'").fetchall()
-        assert len(log) == 1
-        assert log[0]["result"] == "bad_token"
+        assert not log
 
     def test_missing_token_returns_403(self, client):
         resp = client.get("/track?event_id=e1")
@@ -99,25 +104,19 @@ class TestTrackEndpoint:
 
 class TestAppliedEndpoint:
     def test_valid_applied_click(self, client, tmp_path):
-        token = sign("applied", "e1")
-        resp = client.get(f"/applied?event_id=e1&t={token}")
+        resp = record(client, "applied")
         assert resp.status_code == 200
-        assert "Applied" in resp.text
-        assert "Build with Gemma" in resp.text
+        assert resp.json()["state"] == "applied"
 
         conn = tracker_store.connect(str(tmp_path / "tracker.db"))
         row = conn.execute("SELECT * FROM events WHERE event_id='e1'").fetchone()
         assert row["state"] == "applied"
 
     def test_track_after_applied_is_noop_no_downgrade(self, client, tmp_path):
-        applied_token = sign("applied", "e1")
-        client.get(f"/applied?event_id=e1&t={applied_token}")
-
-        track_token = sign("track", "e1")
-        resp = client.get(f"/track?event_id=e1&t={track_token}")
+        record(client, "applied")
+        resp = record(client, "track")
         assert resp.status_code == 200
-        assert "Already applied" in resp.text
-        assert "outranks" in resp.text.lower()
+        assert resp.json()["result"] == "noop"
 
         conn = tracker_store.connect(str(tmp_path / "tracker.db"))
         row = conn.execute("SELECT * FROM events WHERE event_id='e1'").fetchone()
@@ -139,11 +138,11 @@ class TestListEndpoint:
         assert "Build with Gemma" in resp.text
         assert "Seen" in resp.text
 
-    def test_empty_store_shows_clear_message(self, tmp_path, monkeypatch):
+    def test_empty_store_shows_clear_message(self, tmp_path, monkeypatch, local_client):
         db_path = str(tmp_path / "tracker.db")
         monkeypatch.setattr(tracker_service, "DB_PATH", db_path)
         tracker_store.connect(db_path).close()  # schema only, no rows
-        empty_client = TestClient(tracker_service.app)
+        empty_client = local_client(tracker_service.app)
         resp = empty_client.get("/list")
         assert resp.status_code == 200
         assert "Nothing tracked or applied yet" in resp.text
@@ -181,7 +180,7 @@ class TestListEndpoint:
         conn.close()
         assert before == after
 
-    def test_title_html_escaped(self, tmp_path, monkeypatch):
+    def test_title_html_escaped(self, tmp_path, monkeypatch, local_client):
         db_path = str(tmp_path / "tracker.db")
         monkeypatch.setattr(tracker_service, "DB_PATH", db_path)
         conn = tracker_store.connect(db_path)
@@ -190,13 +189,13 @@ class TestListEndpoint:
              "host": "H", "source": "Devpost", "event_start": None, "event_end": None},
         ])
         conn.close()
-        resp = TestClient(tracker_service.app).get("/list")
+        resp = local_client(tracker_service.app).get("/list")
         assert "<script>alert(1)</script>" not in resp.text
         assert "&lt;script&gt;" in resp.text
 
     def test_event_url_and_dates_rendered(self, client):
         resp = client.get("/list")
-        assert 'href="https://build-with-gemma.devfolio.co/"' in resp.text
+        assert 'href="/event/e1"' in resp.text
         assert "Aug 01, 2026" in resp.text
         assert "Aug 02, 2026" in resp.text
 
@@ -210,11 +209,11 @@ class TestListEndpoint:
         token = sign("track", "e1")
         track_resp = client.get(f"/track?event_id=e1&t={token}")
         assert track_resp.status_code == 200
-        assert "Tracked" in track_resp.text
+        assert "Confirm event action" in track_resp.text
 
 
 class TestPagesAreEscaped:
-    def test_title_html_escaped_in_confirmation_page(self, tmp_path, monkeypatch):
+    def test_title_html_escaped_in_confirmation_page(self, tmp_path, monkeypatch, local_client):
         db_path = str(tmp_path / "tracker.db")
         monkeypatch.setattr(tracker_service, "DB_PATH", db_path)
         conn = tracker_store.connect(db_path)
@@ -230,7 +229,7 @@ class TestPagesAreEscaped:
             }
         ])
         conn.close()
-        client = TestClient(tracker_service.app)
+        client = local_client(tracker_service.app)
         token = sign("track", "e2")
         resp = client.get(f"/track?event_id=e2&t={token}")
         assert "<script>alert(1)</script>" not in resp.text

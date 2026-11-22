@@ -269,16 +269,16 @@ class TestDeleteEventsBeforeDate:
         tracker_store.apply_action(conn, "applied", "current")
 
         deleted_count = tracker_store.delete_events_before_date(conn, "2026-11-22")
-        assert deleted_count == 2
+        assert deleted_count == 1
 
         remaining = [r["event_id"] for r in tracker_store.get_all_events(conn)]
         assert "current" in remaining
         assert "future" in remaining
-        assert "past1" not in remaining
+        assert "past1" in remaining
         assert "past2" not in remaining
 
-        # Verify action log for past1 was also pruned
+        # A personally tracked event and its action log survive pruning.
         logs = conn.execute("SELECT * FROM action_log WHERE event_id = 'past1'").fetchall()
-        assert len(logs) == 0
+        assert len(logs) == 1
         current_logs = conn.execute("SELECT * FROM action_log WHERE event_id = 'current'").fetchall()
         assert len(current_logs) == 1

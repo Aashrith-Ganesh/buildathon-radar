@@ -1,7 +1,6 @@
 import json
 import pytest
 from datetime import datetime
-from fastapi.testclient import TestClient
 
 from buildathon_radar import tracker_service, tracker_store, rule_engine
 
@@ -16,8 +15,8 @@ def test_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(test_db):
-    return TestClient(tracker_service.app)
+def client(test_db, local_client):
+    return local_client(tracker_service.app)
 
 
 class TestInitialBlackoutCalendarPopulation:
@@ -233,6 +232,8 @@ class TestDashboardStatsAndExcludedView:
             {
                 "event_id": "ev-eligible",
                 "title": "Bangalore AI Hackathon",
+                "provenance": "live",
+                "registration_status": "open",
                 "url": "https://example.com/blr-ai",
                 "location": "Bengaluru, Karnataka",
                 "mode": "in-person",
@@ -244,6 +245,8 @@ class TestDashboardStatsAndExcludedView:
             {
                 "event_id": "ev-conflicted",
                 "title": "Conflict Hackathon on Test Day",
+                "provenance": "live",
+                "registration_status": "open",
                 "url": "https://example.com/conflict",
                 "location": "Bengaluru, Karnataka",
                 "mode": "in-person",
@@ -252,7 +255,7 @@ class TestDashboardStatsAndExcludedView:
                 "eligibility": "ELIGIBLE",
                 "score": 85,
             },
-        ])
+        ], {"ev-eligible": {"eligibility": "ELIGIBLE", "eligibility_evidence": "Open to high school students"}})
         conn.close()
 
         # Check API stats
@@ -273,7 +276,7 @@ class TestDashboardStatsAndExcludedView:
         # Check Blackout Calendar page view
         resp_cal = client.get("/calendar")
         assert resp_cal.status_code == 200
-        assert "Personal Blackout Calendar Management" in resp_cal.text
+        assert "<h1>Calendar</h1>" in resp_cal.text
         assert "Internal Test 1" in resp_cal.text
         assert "Examination Period" in resp_cal.text
 
@@ -331,7 +334,8 @@ class TestRestApis:
 
         resp = client.post("/api/action", json={
             "event_id": "ajax-test-event",
-            "action": "track"
+            "action": "track",
+            "token": tracker_store.sign_action("track", "ajax-test-event"),
         })
         assert resp.status_code == 200
         data = resp.json()

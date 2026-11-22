@@ -106,7 +106,7 @@ class TestCacheSavedOnlyAfterDelivery:
         assert code == 1
         assert (workdir / "cache.json").read_text() == before
         mocks["send_failure_email"].assert_called_once()
-        assert "digest email not sent" in mocks["send_failure_email"].call_args[0][0]
+        assert "Digest delivery failed" in mocks["send_failure_email"].call_args[0][0]
 
     def test_agent_crash_leaves_cache_untouched(self, workdir, monkeypatch):
         before = (workdir / "cache.json").read_text()

@@ -77,41 +77,30 @@ def assess_eligibility(item: Dict[str, Any], profile: Dict[str, Any]) -> Tuple[s
         (eligibility_status, age_restriction_label, explanation)
         eligibility_status: 'ELIGIBLE' | 'UNKNOWN' | 'INELIGIBLE'
     """
-    text_corpus = " ".join([
-        str(item.get("title") or ""),
-        str(item.get("summary") or ""),
-        str(item.get("host") or ""),
-        str(item.get("location") or ""),
-        str(item.get("eligibility") or ""),
-        str(item.get("age_restrictions") or ""),
-        " ".join(item.get("themes") or [])
-    ]).lower()
-
     rules = profile.get("eligibility_rules", DEFAULT_PROFILE["eligibility_rules"])
-    exclusions = rules.get("explicit_exclusions", [])
-    inclusions = rules.get("explicit_inclusions", [])
+    explicit_rules = item.get("eligibility_rules")
+    evidence = explicit_rules if isinstance(explicit_rules, str) else ""
+    constraints = " ".join((evidence, str(item.get("age_restrictions") or ""), str(item.get("summary") or "")))
+    exclusions = set(rules.get("explicit_exclusions", [])) | {
+        "undergraduates only", "undergraduate students only", "aged over 18",
+    }
+    for phrase in sorted(exclusions):
+        if re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", constraints, re.I):
+            return "INELIGIBLE", "Participation restricted", phrase
+    if re.search(r"(?<!\w)18\s*\+|(?:minimum age|at least)\s*(?:is\s*)?18\b", constraints, re.I):
+        return "INELIGIBLE", "Participation restricted", "Minimum age 18"
 
-    # 1. Check explicit exclusions
-    for exc in exclusions:
-        if re.search(r"\b" + re.escape(exc) + r"\b", text_corpus):
-            return (
-                "INELIGIBLE",
-                "Strictly restricted (e.g. 18+ or university-only)",
-                f"Explicitly excludes target age group: matched '{exc}'."
-            )
-
-    # 2. Check explicit inclusions
-    matched_inclusions = []
-    for inc in inclusions:
-        if re.search(r"\b" + re.escape(inc) + r"\b", text_corpus):
-            matched_inclusions.append(inc)
-
-    if matched_inclusions:
-        return (
-            "ELIGIBLE",
-            "Open to school students / minors",
-            f"Class 11/12 eligible: matched '{matched_inclusions[0]}'."
-        )
+    inclusions = (
+        r"\b(?:open to|accepts?|eligible|welcome|allowed|may participate|can participate)"
+        r"[^.!?]{0,45}(?:high[ -]?school|school students?|class (?:11|12)|all students|all ages|minors)",
+        r"(?:high[ -]?school students?|school students?|class (?:11|12) students?|all students|minors)"
+        r"[^.!?]{0,30}(?:eligible|welcome|allowed|may participate|can participate)",
+        r"\b(?:anyone can participate|open to all ages|no age limit)\b",
+    )
+    for pattern in inclusions:
+        match = re.search(pattern, evidence, re.I)
+        if match and not re.search(r"\b(?:not|except|excluded|ineligible)\b", evidence, re.I):
+            return "ELIGIBLE", "School students permitted", match.group()
 
     # 3. College-organised hackathon check
     host_or_title = f"{item.get('host', '')} {item.get('title', '')}".lower()
@@ -173,15 +162,19 @@ def score_geography(item: Dict[str, Any], profile: Dict[str, Any]) -> Tuple[int,
     location = (item.get("location") or "").lower()
     mode = (item.get("mode") or "").lower()
 
+    if mode == "online" or (mode not in {"in-person", "offline", "hybrid"} and
+            any(word in location for word in ("online", "virtual", "remote"))):
+        return 14, "Online event"
+
     # 1. Bengaluru (top priority)
-    bengaluru_keywords = ["bengaluru", "bangalore", "karnataka", "koramangala", "indiranagar", "whitefield"]
+    bengaluru_keywords = ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield"]
     if any(kw in location for kw in bengaluru_keywords) or (mode == "in-person" and "bengaluru" in location):
-        return 30, "In-person in Bengaluru (Top local priority)"
+        return 30, "Bengaluru venue"
 
     # 2. Other India
     india_keywords = ["india", "delhi", "mumbai", "hyderabad", "pune", "chennai", "noida", "gurgaon", "kolkata"]
     if any(kw in location for kw in india_keywords):
-        return 20, "In-person in India"
+        return 20, "Located in India"
 
     # 3. Online
     if mode == "online" or "online" in location or "virtual" in location or "remote" in location:
@@ -248,7 +241,7 @@ def assess_cost(item: Dict[str, Any]) -> str:
     text = " ".join([
         str(item.get("title") or ""),
         str(item.get("summary") or ""),
-        str(item.get("prize") or ""),
+        str(item.get("participation_fee") or ""),
         " ".join(item.get("themes") or [])
     ]).lower()
 
@@ -262,7 +255,7 @@ def assess_cost(item: Dict[str, Any]) -> str:
         if not re.search(r"\b(?:fee|ticket)\s*\:\s*(?:[1-9]\d*|inr\s*[1-9]|rs\.?\s*[1-9]|\$\s*[1-9])", text):
             is_paid = False
 
-    return "PAID" if is_paid else "FREE"
+    return "PAID" if is_paid else ("FREE" if re.search(r"\b(?:free (?:entry|registration|event|to attend|community meetup)|no (?:entry|registration) fee)\b", text) else "UNKNOWN")
 
 
 def assess_schedule_and_blackout(
@@ -346,24 +339,6 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
 
     eligibility, age_restrictions, elig_why = assess_eligibility(item, profile)
 
-    if eligibility == "INELIGIBLE":
-        return {
-            "url": item.get("url"),
-            "title": item.get("title"),
-            "priority": "INELIGIBLE",
-            "tier": "ineligible",
-            "score": 0,
-            "eligibility": eligibility,
-            "age_restrictions": age_restrictions,
-            "cost": "FREE",
-            "timing": "WEEKDAY",
-            "timing_tier": 5,
-            "is_conflict": False,
-            "scoring": {"theme": 0, "geo": 0, "host": 0, "format": 0, "team": 0},
-            "why": f"Ineligible: {elig_why}",
-            "item": item
-        }
-
     theme_score, theme_why = score_theme(item, profile)
     geo_score, geo_why = score_geography(item, profile)
     host_score, host_why = score_host_and_signal(item)
@@ -396,11 +371,11 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
         timing_bonus = 4
     else:
         timing_tier = 4
-        timing_tier_label = "Paid & Weekday"
+        timing_tier_label = "Registration cost unknown" if cost == "UNKNOWN" else "Paid & Weekday"
         timing_bonus = 0
 
     total_score = theme_score + geo_score + host_score + format_score + team_score + timing_bonus
-    total_score = min(100, max(0, total_score))
+    total_score = max(0, min(100, round(total_score * 100 / 115)))
 
     # Priority determination
     thresholds = profile.get("tier_thresholds", {"high_priority": 70, "medium_priority": 45, "low_priority": 25})
@@ -408,7 +383,10 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
     if is_conflict:
         priority = "CONFLICT (UNAVAILABLE)"
         tier = "radar"
-    elif total_score >= thresholds.get("high_priority", 70):
+    elif eligibility == "INELIGIBLE":
+        priority = "INELIGIBLE"
+        tier = "ineligible"
+    elif eligibility == "ELIGIBLE" and total_score >= thresholds.get("high_priority", 70):
         priority = "HIGH PRIORITY"
         tier = "must_see"
     elif total_score >= thresholds.get("medium_priority", 45):
@@ -437,6 +415,7 @@ def classify_and_score_event(item: Dict[str, Any], profile: Dict[str, Any] = Non
         "score": total_score,
         "eligibility": eligibility,
         "age_restrictions": age_restrictions,
+        "eligibility_evidence": elig_why if eligibility != "UNKNOWN" else None,
         "cost": cost,
         "timing": timing,
         "timing_tier": timing_tier,

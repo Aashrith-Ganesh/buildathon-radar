@@ -43,14 +43,14 @@ stop_tracker() {
 }
 
 start_radar() {
-    echo "Loading weekly radar schedule (Sunday 17:00 IST)..."
+    echo "Loading hourly radar refresh..."
     launchctl unload "$LAUNCH_AGENTS_DIR/$RADAR_PLIST" 2>/dev/null || true
     launchctl load -w "$LAUNCH_AGENTS_DIR/$RADAR_PLIST"
-    echo "Weekly radar timer loaded."
+    echo "Hourly radar timer loaded."
 }
 
 stop_radar() {
-    echo "Unloading weekly radar schedule..."
+    echo "Unloading hourly radar refresh..."
     launchctl unload "$LAUNCH_AGENTS_DIR/$RADAR_PLIST" 2>/dev/null || true
     echo "Radar timer unloaded."
 }

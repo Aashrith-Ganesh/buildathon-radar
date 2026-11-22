@@ -15,7 +15,7 @@ if len(sys.argv) > 1 and sys.argv[1] in CLI_COMMANDS:
 
 from buildathon_radar import tracker_store
 from buildathon_radar.agent import run_agent
-from buildathon_radar.deliver import get_date_range, send_digest, send_failure_email
+from buildathon_radar.deliver import DeliveryStatus, get_date_range, send_digest, send_failure_email
 from buildathon_radar.digest import build_digest, build_html_digest
 from buildathon_radar.fetcher import fetch_events, save_cache
 from buildathon_radar.guard import validate_picks
@@ -80,21 +80,11 @@ try:
             applied_events=applied_events,
         )
 
-        # In tests, send_digest is mocked; in real execution, email is optional
-        from unittest.mock import MagicMock
-        is_mocked = isinstance(send_digest, MagicMock) or hasattr(send_digest, "mock_calls")
-        email_configured = bool(os.getenv("EMAIL_ADDRESS") and os.getenv("EMAIL_PASSWORD"))
-
-        if is_mocked or email_configured:
-            if not send_digest(digest, html_digest):
-                raise RuntimeError(
-                    "digest email not sent; cache left unchanged so next run retries"
-                )
-        else:
-            from buildathon_radar.deliver import save_to_archive, save_html_to_archive
-            save_to_archive(digest)
-            save_html_to_archive(html_digest)
-            print("  INFO: Email credentials not set in .env. Local reports saved in archive/.")
+        delivery = send_digest(digest, html_digest)
+        if delivery in (DeliveryStatus.FAILED, False):
+            raise RuntimeError("Digest delivery failed; cache left unchanged.")
+        if delivery == DeliveryStatus.SKIPPED:
+            print("Email notifications disabled. Digest archived locally.")
 
         save_cache(pending_cache)
         print("Run complete. Cache and database updated.")

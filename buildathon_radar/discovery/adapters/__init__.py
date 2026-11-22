@@ -102,3 +102,22 @@ __all__ = [
     "TechCompaniesAdapter",
     "SearchDiscoveryAdapter",
 ]
+
+LIVE_SOURCE_KEYS = frozenset({"devpost", "devfolio", "unstop", "hackerearth", "mlh", "ethglobal", "gdg", "foss_united", "meetup", "eventbrite", "allevents"})
+
+# Direct browsing remains available when a source has no verified automated feed.
+MANUAL_SOURCE_URLS = {
+    "linkedin": "https://www.linkedin.com/search/results/content/?keywords=Bengaluru%20hackathon",
+    "twitter": "https://x.com/search?q=Bengaluru%20hackathon&f=live",
+    "reddit": "https://www.reddit.com/r/developersIndia/search/?q=hackathon&restrict_sr=1",
+    "townscript": "https://www.townscript.com/in/bangalore",
+    "tentimes": "https://10times.com/bangalore-in",
+    "microsoft_reactor": "https://developer.microsoft.com/en-us/reactor/",
+    "aws_community": "https://aws.amazon.com/developer/community/usergroups/",
+    "github_community": "https://education.github.com/",
+    "nvidia_dev": "https://developer.nvidia.com/higher-education-and-research",
+    "cncf": "https://community.cncf.io/",
+    "indian_colleges": "https://www.google.com/search?q=Bengaluru+college+hackathon+site%3Aedu.in",
+    "tech_companies": "https://www.google.com/search?q=India+technology+company+hackathon+registration",
+    "search_discovery": "https://www.google.com/search?q=Bengaluru+student+hackathon+registration",
+}

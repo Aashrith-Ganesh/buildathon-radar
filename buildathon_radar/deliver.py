@@ -1,5 +1,6 @@
 import os
 import smtplib
+from enum import StrEnum
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -9,6 +10,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ARCHIVE_DIR = "archive"
+EMAIL_AVAILABLE = False
+
+
+class DeliveryStatus(StrEnum):
+    SENT = "sent"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+def email_enabled():
+    return EMAIL_AVAILABLE and os.getenv("ENABLE_EMAIL", "false").strip().lower() in {"1", "true", "yes"}
 
 
 def get_date_range():
@@ -46,30 +58,19 @@ def _count_picks(digest_text):
 
 
 def send_digest(digest_text, html_digest):
-    """Archives the digest locally as markdown and HTML, then optionally emails it if configured.
-    Returns True when local archive succeeds and (if enabled) email succeeds.
-    Does not crash if email credentials are unconfigured."""
-    try:
-        save_to_archive(digest_text)
-        save_html_to_archive(html_digest)
-    except Exception as e:
-        print(f"  WARNING: Could not save to archive: {e}")
+    """Archive the digest locally before considering optional delivery."""
+    save_to_archive(digest_text)
+    save_html_to_archive(html_digest)
+
+    if not email_enabled():
+        return DeliveryStatus.SKIPPED
 
     sender = os.getenv("EMAIL_ADDRESS")
     password = os.getenv("EMAIL_PASSWORD")
     recipient = os.getenv("RECIPIENT_EMAIL") or sender
-
     if not sender or not password:
-        print(
-            "  ERROR: EMAIL_ADDRESS or EMAIL_PASSWORD not set in .env, skipping email send."
-        )
-        return False
-
-    # If testing or dry-run flag or explicit disable
-    enable_email = os.getenv("ENABLE_EMAIL", "true").strip().lower() in ("1", "true", "yes")
-    if not enable_email:
-        print("  INFO: ENABLE_EMAIL is false; skipping email send. Local reports saved in archive/.")
-        return True
+        print("  ERROR: Email credentials are missing.")
+        return DeliveryStatus.FAILED
 
     try:
         pick_count = _count_picks(digest_text)
@@ -104,20 +105,20 @@ def send_digest(digest_text, html_digest):
                 server.sendmail(sender, recipient, msg.as_string())
 
         print("Digest sent to your inbox.")
-        return True
+        return DeliveryStatus.SENT
     except smtplib.SMTPAuthenticationError:
         print(
             "  ERROR: Gmail authentication failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD in .env."
         )
-    except smtplib.SMTPException as e:
-        print(f"  ERROR: SMTP error, {e}")
-    except Exception as e:
-        print(f"  ERROR: Failed to send email, {e}")
-    return False
+    except (smtplib.SMTPException, OSError, ValueError):
+        print("  ERROR: SMTP delivery failed.")
+    return DeliveryStatus.FAILED
 
 
 def send_failure_email(error_text):
-    """Sent on fatal failure if email is configured; logs cleanly otherwise."""
+    """Send a failure notification only when delivery is enabled."""
+    if not email_enabled():
+        return DeliveryStatus.SKIPPED
     sender = os.getenv("EMAIL_ADDRESS")
     password = os.getenv("EMAIL_PASSWORD")
     recipient = os.getenv("RECIPIENT_EMAIL") or sender
@@ -153,5 +154,5 @@ def send_failure_email(error_text):
                 server.ehlo()
                 server.login(sender, password)
                 server.sendmail(sender, recipient, msg.as_string())
-    except Exception as e:
-        print(f"  WARNING: Could not send failure email: {e}")
+    except (smtplib.SMTPException, OSError, ValueError):
+        print("  WARNING: SMTP failure notification failed.")

@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import html
 import json
-import logging
+import re
+from datetime import datetime, timezone
+from urllib.parse import urljoin, urlsplit
 from typing import Any, Dict, List, Optional, Tuple
 
 from buildathon_radar.discovery.base_adapter import BaseSourceAdapter
 from buildathon_radar.discovery.models import derive_event_id, normalize_url
 
-logger = logging.getLogger("buildathon_radar.discovery.dedicated")
+def _team_size(minimum, maximum):
+    if type(minimum) is int and type(maximum) is int and 0 < minimum <= maximum:
+        return f"{minimum}-{maximum}" if minimum != maximum else str(minimum)
+    return None
+
+
+def _application_window(start, end):
+    try:
+        first, last = (datetime.fromisoformat(value) for value in (start, end))
+        now = datetime.now(timezone.utc)
+        if now > last:
+            return "closed"
+        if first <= now <= last:
+            return "open"
+    except (TypeError, ValueError):
+        pass
+    return None
 
 
 class DevpostAdapter(BaseSourceAdapter):
@@ -23,21 +42,23 @@ class DevpostAdapter(BaseSourceAdapter):
             url = "https://devpost.com/api/hackathons?challenge_type[]=online&challenge_type[]=in-person&sort_by=submission_period_dates"
             html_text = self.make_request(url, timeout=8)
             data = json.loads(html_text)
-            hackathons = data.get("hackathons", [])
+            hackathons = data["hackathons"]
+            if not isinstance(hackathons, list):
+                raise ValueError("Unexpected listing format")
             items = []
             for h in hackathons:
                 title = h.get("title", "")
                 reg_url = normalize_url(h.get("url", ""))
-                host = h.get("organization_name") or "Community"
-                start = self.parse_date_safe(h.get("submission_period_dates"))
-                end = start
-                prize = h.get("prize_amount") or "Unspecified"
-                loc = "Online"
-                mode = "online"
+                host = h.get("organization_name")
+                start = self.parse_date_safe(h.get("event_start"))
+                end = self.parse_date_safe(h.get("event_end"))
+                prize = h.get("prize_amount")
+                loc = None
+                mode = None
                 displayed_loc = h.get("displayed_location", {})
-                if displayed_loc and displayed_loc.get("location"):
-                    loc = displayed_loc.get("location")
-                    mode = "in-person"
+                if isinstance(displayed_loc, dict) and isinstance(displayed_loc.get("location"), str):
+                    loc = displayed_loc["location"]
+                    mode = "online" if loc.lower() in {"online", "virtual"} else "in-person"
 
                 items.append({
                     "event_id": derive_event_id(title, host, start or ""),
@@ -51,37 +72,18 @@ class DevpostAdapter(BaseSourceAdapter):
                     "mode": mode,
                     "event_start": start,
                     "event_end": end,
-                    "registration_deadline": end,
-                    "team_size": "3-5 preferred",
+                    "registration_deadline": self.parse_date_safe(h.get("registration_deadline")),
                     "prize": prize,
-                    "eligibility": "ELIGIBLE",
+                    "registration_status": self.registration_status(h.get("registration_status")),
+                    "eligibility_rules": h.get("eligibility_rules"),
                     "confidence": "High",
+                    "image_url": h.get("thumbnail_url"),
                     "announcement_url": reg_url,
                 })
             return items, None
-        except Exception as e:
-            logger.warning("Devpost live fetch error: %s; using curated discovery feed", e)
-            return [
-                {
-                    "event_id": "devpost-google-genai-hackathon-2026-12-04",
-                    "title": "Google GenAI Developer Sprint",
-                    "url": "https://google-genai.devpost.com/",
-                    "host": "Google Developers",
-                    "source": "Devpost",
-                    "summary": "Build agentic AI applications with Gemini 2.0 and Gemma models.",
-                    "category": "AI Hackathon",
-                    "location": "Online",
-                    "mode": "online",
-                    "event_start": "2026-12-04",
-                    "event_end": "2026-12-08",
-                    "registration_deadline": "2026-12-04",
-                    "team_size": "1-4 members",
-                    "prize": "$25,000",
-                    "eligibility": "ELIGIBLE",
-                    "confidence": "High",
-                    "announcement_url": "https://google-genai.devpost.com/",
-                }
-            ], None
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class UnstopAdapter(BaseSourceAdapter):
@@ -96,17 +98,33 @@ class UnstopAdapter(BaseSourceAdapter):
             url = "https://unstop.com/api/public/opportunity/search-result?opportunity=hackathons&per_page=15"
             content = self.make_request(url, timeout=8)
             data = json.loads(content)
-            results = data.get("data", {}).get("data", [])
+            results = data["data"]["data"]
+            if not isinstance(results, list):
+                raise ValueError("Unexpected listing format")
             items = []
             for r in results:
                 title = r.get("title")
-                reg_url = normalize_url(f"https://unstop.com/hackathons/{r.get('slug')}")
-                host = r.get("organisation", {}).get("name") if isinstance(r.get("organisation"), dict) else "Unstop Organiser"
-                start = self.parse_date_safe(r.get("start_date"))
-                end = self.parse_date_safe(r.get("end_date")) or start
-                deadline = self.parse_date_safe(r.get("regnRequirements", {}).get("remain_days")) or end
-                loc = "India"
-                mode = "in-person" if "offline" in str(r.get("filters", "")).lower() else "online"
+                listing = r.get("seo_url") or r.get("public_url")
+                slug = r.get("slug")
+                if not listing and isinstance(slug, str) and re.fullmatch(r"[a-z0-9-]+", slug):
+                    listing = f"hackathons/{slug}"
+                reg_url = urljoin("https://unstop.com/", listing) if isinstance(listing, str) else ""
+                if urlsplit(reg_url).hostname not in {"unstop.com", "www.unstop.com"}:
+                    reg_url = ""
+                rules = r.get("regnRequirements")
+                rules = rules if isinstance(rules, dict) else {}
+                host = r.get("organisation", {}).get("name") if isinstance(r.get("organisation"), dict) else None
+                start = self.parse_date_safe(r.get("event_start"))
+                end = self.parse_date_safe(r.get("event_end"))
+                deadline = self.parse_date_safe(rules.get("end_regn_dt"))
+                locations = r.get("locations")
+                loc = ", ".join(place for place in locations if isinstance(place, str)) if isinstance(locations, list) else None
+                mode = {"online": "online", "offline": "in-person", "hybrid": "hybrid"}.get(r.get("region"))
+                status = None
+                if r.get("regn_open") in (1, "1") and rules.get("reg_status") == "STARTED":
+                    status = _application_window(rules.get("start_regn_dt"), rules.get("end_regn_dt"))
+                elif rules.get("reg_status") in {"CLOSED", "ENDED"}:
+                    status = "closed"
 
                 items.append({
                     "event_id": derive_event_id(title, host, start or ""),
@@ -121,35 +139,20 @@ class UnstopAdapter(BaseSourceAdapter):
                     "event_start": start,
                     "event_end": end,
                     "registration_deadline": deadline,
-                    "team_size": "2-4 members",
-                    "prize": "INR 50,000+",
-                    "eligibility": "ELIGIBLE",
+                    "registration_status": status,
+                    "team_size": _team_size(rules.get("min_team_size"), rules.get("max_team_size")),
+                    "eligibility_rules": r.get("eligibility_rules"),
                     "confidence": "High",
+                    "image_url": r.get("thumb"),
+                    "participation_fee": "Free registration" if r.get("isPaid") is False else (
+                        "Paid registration, amount unknown" if r.get("isPaid") is True else None
+                    ),
                     "announcement_url": reg_url,
                 })
             return items, None
-        except Exception as e:
-            return [
-                {
-                    "event_id": "unstop-bengaluru-code-clash-2026-12-05",
-                    "title": "Bengaluru Student Code Clash 2026",
-                    "url": "https://unstop.com/hackathons/bengaluru-code-clash-2026",
-                    "host": "PES University & IEEE",
-                    "source": "Unstop",
-                    "summary": "Flagship 24-hour collegiate and high school open hackathon in Bengaluru.",
-                    "category": "Hackathon",
-                    "location": "Bengaluru, Karnataka",
-                    "mode": "in-person",
-                    "event_start": "2026-12-05",
-                    "event_end": "2026-12-06",
-                    "registration_deadline": "2026-12-03",
-                    "team_size": "3-4 members",
-                    "prize": "INR 1,00,000",
-                    "eligibility": "ELIGIBLE",
-                    "confidence": "High",
-                    "announcement_url": "https://unstop.com/hackathons/bengaluru-code-clash-2026",
-                }
-            ], None
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class DevfolioAdapter(BaseSourceAdapter):
@@ -164,17 +167,27 @@ class DevfolioAdapter(BaseSourceAdapter):
             url = "https://api.devfolio.co/api/hackathons?filter=upcoming&page=1&limit=15"
             content = self.make_request(url, timeout=8)
             data = json.loads(content)
-            hackathons = data.get("result", [])
+            hackathons = data["result"]
+            if not isinstance(hackathons, list):
+                raise ValueError("Unexpected listing format")
             items = []
             for h in hackathons:
                 title = h.get("name")
                 slug = h.get("slug")
-                reg_url = normalize_url(f"https://{slug}.devfolio.co/")
-                host = h.get("hosted_by") or "Community"
+                reg_url = normalize_url(f"https://{slug}.devfolio.co/") if isinstance(slug, str) and re.fullmatch(r"[a-z0-9-]+", slug) else ""
+                host = h.get("hosted_by")
                 start = self.parse_date_safe(h.get("starts_at"))
-                end = self.parse_date_safe(h.get("ends_at")) or start
-                loc = h.get("location") or "Online"
-                mode = "in-person" if h.get("is_offline") else "online"
+                end = self.parse_date_safe(h.get("ends_at"))
+                loc = h.get("city") or h.get("location")
+                settings = h.get("hackathon_setting")
+                settings = settings if isinstance(settings, dict) else {}
+                mode = None
+                if settings.get("is_hybrid") is True:
+                    mode = "hybrid"
+                elif h.get("is_online") is True:
+                    mode = "online"
+                elif h.get("is_online") is False and loc:
+                    mode = "in-person"
 
                 items.append({
                     "event_id": derive_event_id(title, host, start or ""),
@@ -188,36 +201,23 @@ class DevfolioAdapter(BaseSourceAdapter):
                     "mode": mode,
                     "event_start": start,
                     "event_end": end,
-                    "registration_deadline": start,
-                    "team_size": "2-4 members",
-                    "prize": "INR 75,000+",
-                    "eligibility": "ELIGIBLE",
+                    "registration_deadline": self.parse_date_safe(settings.get("reg_ends_at")),
+                    "registration_status": _application_window(settings.get("reg_starts_at"), settings.get("reg_ends_at")),
+                    "team_size": _team_size(h.get("team_min"), h.get("team_size")),
+                    "eligibility_rules": h.get("eligibility_rules"),
                     "confidence": "High",
+                    "image_url": h.get("cover_img"),
+                    "country": h.get("country"),
+                    "registration_url": settings.get("external_apply_url"),
+                    "participation_fee": "Free registration" if settings.get("paid") is False else (
+                        "Paid registration, amount unknown" if settings.get("paid") is True else None
+                    ),
                     "announcement_url": reg_url,
                 })
             return items, None
-        except Exception:
-            return [
-                {
-                    "event_id": "devfolio-eth-india-bengaluru-2026-12-08",
-                    "title": "ETHIndia Fellowship Builder Sprint",
-                    "url": "https://ethindia.devfolio.co/",
-                    "host": "Devfolio Community",
-                    "source": "Devfolio",
-                    "summary": "India's premier web3 and distributed systems hackathon for open developers.",
-                    "category": "Hackathon",
-                    "location": "Bengaluru, Karnataka",
-                    "mode": "in-person",
-                    "event_start": "2026-12-08",
-                    "event_end": "2026-12-09",
-                    "registration_deadline": "2026-12-02",
-                    "team_size": "3-5 members",
-                    "prize": "$15,000",
-                    "eligibility": "ELIGIBLE",
-                    "confidence": "High",
-                    "announcement_url": "https://ethindia.devfolio.co/",
-                }
-            ], None
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class MLHAdapter(BaseSourceAdapter):
@@ -227,34 +227,39 @@ class MLHAdapter(BaseSourceAdapter):
     discovery_method = "Season Schedule"
     confidence_level = "High"
 
-    def fetch(self) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    def fetch(self):
+        now = datetime.now(timezone.utc)
+        season = now.year + (now.month >= 8)
+        listing = f"https://www.mlh.com/seasons/{season}/events"
         try:
-            url = "https://mlh.io/seasons/2026/events"
-            html_text = self.make_request(url, timeout=8)
-            # MLH returns season events cards
-            return [
-                {
-                    "event_id": "mlh-global-hack-week-ai-2026-12-05",
-                    "title": "MLH Global Hack Week: AI & Agents",
-                    "url": "https://ghw.mlh.io/",
-                    "host": "Major League Hacking",
-                    "source": "MLH",
-                    "summary": "A week-long celebration of artificial intelligence, open coding, and beginner-friendly builder tracks.",
-                    "category": "Hackathon",
-                    "location": "Online",
-                    "mode": "online",
-                    "event_start": "2026-12-05",
-                    "event_end": "2026-12-09",
-                    "registration_deadline": "2026-12-05",
-                    "team_size": "1-4 members",
-                    "prize": "Swag & Digital Credentials",
-                    "eligibility": "ELIGIBLE",
-                    "confidence": "High",
-                    "announcement_url": "https://ghw.mlh.io/",
-                }
-            ], None
-        except Exception:
-            return [], None
+            page = self.make_request(listing)
+            cards = re.split(r'itemType="https://schema.org/Event"', page)[1:]
+            events = []
+            for card in cards:
+                title = re.search(r'<h4\b[^>]*>(.*?)</h4>', card, re.S)
+                if not title:
+                    continue
+                properties = dict(re.findall(r'<meta itemProp="([^"]+)" content="([^"]*)"', card[:title.start()]))
+                url = html.unescape(properties.get("url", ""))
+                start = self.parse_date_safe(properties.get("startDate"))
+                if not url or not start:
+                    continue
+                modes = {"OfflineEventAttendanceMode": "in-person", "OnlineEventAttendanceMode": "online",
+                         "MixedEventAttendanceMode": "hybrid"}
+                events.append({
+                    "title": html.unescape(self.clean_text(title[1])),
+                    "url": url,
+                    "announcement_url": url,
+                    "event_start": start,
+                    "event_end": self.parse_date_safe(properties.get("endDate")),
+                    "location": ", ".join(html.unescape(properties[key]) for key in
+                                          ("addressLocality", "addressRegion", "addressCountry") if properties.get(key)),
+                    "mode": modes.get(properties.get("eventAttendanceMode", "").rsplit("/", 1)[-1]),
+                })
+            return (events, None) if events else ([], "No structured events found on the MLH schedule")
+        except (OSError, ValueError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class HackerEarthAdapter(BaseSourceAdapter):
@@ -269,55 +274,38 @@ class HackerEarthAdapter(BaseSourceAdapter):
             url = "https://www.hackerearth.com/api/events/upcoming/"
             content = self.make_request(url, timeout=8)
             data = json.loads(content)
-            events = data.get("response", [])
+            events = data["response"]
+            if not isinstance(events, list):
+                raise ValueError("Unexpected listing format")
             items = []
             for ev in events:
                 title = ev.get("title")
                 reg_url = normalize_url(ev.get("url"))
-                start = self.parse_date_safe(ev.get("start_date"))
-                end = self.parse_date_safe(ev.get("end_date")) or start
+                start = self.parse_date_safe(ev.get("start_utc_tz") or ev.get("start_date"))
+                end = self.parse_date_safe(ev.get("end_utc_tz") or ev.get("end_date"))
                 items.append({
                     "event_id": derive_event_id(title, "HackerEarth", start or ""),
                     "title": title,
                     "url": reg_url,
-                    "host": "HackerEarth Community",
+                    "host": ev.get("organizer"),
                     "source": "HackerEarth",
                     "summary": f"{title} on HackerEarth",
-                    "category": "Coding Challenge",
+                    "category": "Hackathon",
+                    "is_hackathon": "hackathon" in str(ev.get("challenge_type") or "").lower(),
                     "location": "Online",
                     "mode": "online",
                     "event_start": start,
                     "event_end": end,
-                    "registration_deadline": start,
-                    "team_size": "1-3 members",
-                    "prize": "INR 50,000",
-                    "eligibility": "ELIGIBLE",
+                    "registration_deadline": None,
+                    "registration_status": self.registration_status(ev.get("registration_status")),
+                    "eligibility_rules": ev.get("eligibility_rules"),
                     "confidence": "High",
                     "announcement_url": reg_url,
                 })
             return items, None
-        except Exception:
-            return [
-                {
-                    "event_id": "hackerearth-india-ai-innovators-2026-12-03",
-                    "title": "India AI Innovators Challenge",
-                    "url": "https://www.hackerearth.com/challenges/hackathon/india-ai-innovators/",
-                    "host": "HackerEarth & NASSCOM",
-                    "source": "HackerEarth",
-                    "summary": "National open innovation sprint building indigenous AI and open-source tooling.",
-                    "category": "Hackathon",
-                    "location": "Online",
-                    "mode": "online",
-                    "event_start": "2026-12-03",
-                    "event_end": "2026-12-05",
-                    "registration_deadline": "2026-12-02",
-                    "team_size": "2-4 members",
-                    "prize": "INR 2,00,000",
-                    "eligibility": "ELIGIBLE",
-                    "confidence": "High",
-                    "announcement_url": "https://www.hackerearth.com/challenges/hackathon/india-ai-innovators/",
-                }
-            ], None
+        except (OSError, ValueError, TypeError, AttributeError, KeyError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class Hack2skillAdapter(BaseSourceAdapter):
@@ -327,28 +315,8 @@ class Hack2skillAdapter(BaseSourceAdapter):
     discovery_method = "Platform Index"
     confidence_level = "Medium-High"
 
-    def fetch(self) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        return [
-            {
-                "event_id": "hack2skill-smart-bengaluru-hackathon-2026-12-02",
-                "title": "Smart Bengaluru Urban Mobility Hackathon",
-                "url": "https://hack2skill.com/hack/smart-bengaluru-2026",
-                "host": "Karnataka Innovation & Tech Society (KITS)",
-                "source": "Hack2skill",
-                "summary": "State-level student innovation sprint addressing urban mobility and traffic management in Bengaluru.",
-                "category": "Hackathon",
-                "location": "Bengaluru, Karnataka",
-                "mode": "in-person",
-                "event_start": "2026-12-02",
-                "event_end": "2026-12-03",
-                "registration_deadline": "2026-11-30",
-                "team_size": "3-5 members",
-                "prize": "INR 1,50,000",
-                "eligibility": "ELIGIBLE",
-                "confidence": "High",
-                "announcement_url": "https://hack2skill.com/hack/smart-bengaluru-2026",
-            }
-        ], None
+    def fetch(self):
+        return [], "No reliable event discovery feed configured"
 
 
 class DoraHacksAdapter(BaseSourceAdapter):
@@ -358,28 +326,8 @@ class DoraHacksAdapter(BaseSourceAdapter):
     discovery_method = "Bounties & Hackathons API"
     confidence_level = "High"
 
-    def fetch(self) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        return [
-            {
-                "event_id": "dorahacks-ai-open-bounty-2026-12-01",
-                "title": "DoraHacks Global AI Agents Sprint",
-                "url": "https://dorahacks.io/hackathon/ai-agents-2026",
-                "host": "DoraHacks Community",
-                "source": "DoraHacks",
-                "summary": "Open source decentralized AI agents competition for student developers.",
-                "category": "Hackathon",
-                "location": "Online",
-                "mode": "online",
-                "event_start": "2026-12-01",
-                "event_end": "2026-12-05",
-                "registration_deadline": "2026-12-01",
-                "team_size": "1-4 members",
-                "prize": "$20,000",
-                "eligibility": "ELIGIBLE",
-                "confidence": "High",
-                "announcement_url": "https://dorahacks.io/hackathon/ai-agents-2026",
-            }
-        ], None
+    def fetch(self):
+        return [], "No reliable event discovery feed configured"
 
 
 class ETHGlobalAdapter(BaseSourceAdapter):
@@ -389,28 +337,45 @@ class ETHGlobalAdapter(BaseSourceAdapter):
     discovery_method = "Calendar Index"
     confidence_level = "High"
 
-    def fetch(self) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        return [
-            {
-                "event_id": "ethglobal-circuit-hacker-sprint-2027-01-12",
-                "title": "ETHGlobal Circuit 2027",
-                "url": "https://ethglobal.com/events/circuit2027",
-                "host": "ETHGlobal",
-                "source": "ETHGlobal",
-                "summary": "Global online hackathon building decentralized identity and verifiable computation.",
-                "category": "Hackathon",
-                "location": "Online",
-                "mode": "online",
-                "event_start": "2027-01-12",
-                "event_end": "2027-01-15",
-                "registration_deadline": "2027-01-10",
-                "team_size": "2-5 members",
-                "prize": "$50,000",
-                "eligibility": "ELIGIBLE",
-                "confidence": "High",
-                "announcement_url": "https://ethglobal.com/events/circuit2027",
-            }
-        ], None
+    def fetch(self):
+        listing = "https://ethglobal.com/events"
+        try:
+            page = self.make_request(listing)
+            results = {}
+            decoder = json.JSONDecoder()
+            for payload in re.findall(r'__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)', page):
+                data = json.loads(payload)
+                for match in re.finditer(r'\{"id":\d+,"name":', data):
+                    try:
+                        event, _ = decoder.raw_decode(data, match.start())
+                    except ValueError:
+                        continue
+                    slug = event.get("slug")
+                    if (event.get("type") != "hackathon" or event.get("status") != "future"
+                            or not isinstance(slug, str) or not re.fullmatch(r"[a-z0-9-]+", slug)):
+                        continue
+                    start = self.parse_date_safe(event.get("startTime"))
+                    if not start:
+                        continue
+                    url = f"{listing}/{slug}"
+                    city = event.get("city") or {}
+                    results[slug] = {
+                        "title": event.get("name"),
+                        "url": url,
+                        "announcement_url": url,
+                        "host": "ETHGlobal",
+                        "event_start": start,
+                        "event_end": self.parse_date_safe(event.get("endTime")),
+                        "registration_deadline": self.parse_date_safe(event.get("signupDeadline")),
+                        "location": city.get("name"),
+                        "mode": {"virtual": "online", "physical": "in-person"}.get(event.get("medium")),
+                    }
+            if not results:
+                return [], "No structured upcoming hackathons found on the ETHGlobal schedule"
+            return list(results.values()), None
+        except (OSError, ValueError) as error:
+            status = getattr(error, "code", None)
+            return [], f"HTTP {status}" if status else type(error).__name__
 
 
 class HackathonDotComAdapter(BaseSourceAdapter):
@@ -420,25 +385,5 @@ class HackathonDotComAdapter(BaseSourceAdapter):
     discovery_method = "Directory Feed"
     confidence_level = "Medium"
 
-    def fetch(self) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        return [
-            {
-                "event_id": "hackathon-com-bangalore-fintech-2026-12-03",
-                "title": "Bangalore FinTech Innovation Jam",
-                "url": "https://www.hackathon.com/event/bangalore-fintech-jam-2026",
-                "host": "FinTech Forum India",
-                "source": "Hackathon.com",
-                "summary": "High-velocity financial technology hackathon hosted in Koramangala.",
-                "category": "Hackathon",
-                "location": "Bengaluru, Karnataka",
-                "mode": "in-person",
-                "event_start": "2026-12-03",
-                "event_end": "2026-12-04",
-                "registration_deadline": "2026-12-01",
-                "team_size": "3-5 members",
-                "prize": "INR 1,00,000",
-                "eligibility": "ELIGIBLE",
-                "confidence": "Medium",
-                "announcement_url": "https://www.hackathon.com/event/bangalore-fintech-jam-2026",
-            }
-        ], None
+    def fetch(self):
+        return [], "No reliable event discovery feed configured"

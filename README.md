@@ -67,7 +67,7 @@ An automated hackathon and buildathon discovery service tailored for an Indian h
 4. **Antigravity On-Demand Intelligence Layer**:
    - Ready-to-use CLI and Python interface for Antigravity to inspect, analyze, and compare events, verify Class 11 eligibility, track deadlines, and generate customized reports.
 5. **Native macOS `launchd` Scheduling**:
-   - Replaced Linux systemd with native macOS `launchd` plist templates for background weekly execution (Sundays at 5:00 PM IST) and tracker service management.
+   - Replaced Linux systemd with native macOS `launchd` plist templates for automatic hourly refresh and tracker service management.
 6. **Local Tracker Dashboard**:
    - FastAPI web service running locally on `http://127.0.0.1:8015`. No Cloudflare Tunnel required.
 
@@ -224,8 +224,38 @@ All data is stored in `tracker.db` under the `events` table:
 
 ## Testing
 
-Run the automated test suite (343 tests):
+Run the automated test suite:
 ```bash
 venv/bin/pytest
 ```
 All tests run with mocked network and zero external API dependencies.
+
+
+## Local dashboard security and discovery
+
+Open `http://127.0.0.1:8015/dashboard` directly and keep the service bound to loopback.
+Use **Settings** to unlock writes and personal notes with `TRACKER_SECRET` from
+the local `.env`. Programmatic mutations require the signed browser session and
+`X-Radar-Request: 1`. The same secret also signs individual legacy event actions.
+Event URLs use `/h/{slug}` and personal tracking is available at `/tracker`.
+The unauthenticated `/health` endpoint reports service
+status. Interactive API documentation is disabled.
+
+Email is disabled in this checkout. Digest generation still writes local reports.
+The discovery engine uses Devpost, Devfolio, Unstop, HackerEarth, Major League
+Hacking, ETHGlobal, GDG Bangalore, FOSS United, Meetup, Eventbrite and AllEvents.
+Sources without a verified feed can be opened from their browse links where available. Discover includes current listings
+with unconfirmed schedules or registration. Open now applies stricter checks. A responding feed can return no qualifying listings.
+Legacy listings remain in History and retain their saved states. Unknown schedules
+and unsupported eligibility claims do not qualify for the student spotlight.
+
+Run the same listing refresh used by the revised launchd plist from the project root:
+
+```sh
+venv/bin/python -m buildathon_radar.discovery.engine
+```
+
+The radar LaunchAgent runs this command on load and once an hour. The dashboard
+checks for completed scans while open and refreshes without interrupting an edited
+search. Discarded listings remain accessible under **Discard pile**. Check registration details and eligibility on the official
+event page before committing to attend.

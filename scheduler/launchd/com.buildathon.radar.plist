@@ -11,19 +11,14 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/aashrith/Projects/buildathon-radar/venv/bin/python</string>
-        <string>main.py</string>
+        <string>-m</string>
+        <string>buildathon_radar.discovery.engine</string>
     </array>
 
-    <!-- Run every Sunday at 17:00 IST (5:00 PM) -->
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Weekday</key>
-        <integer>0</integer>
-        <key>Hour</key>
-        <integer>17</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>3600</integer>
 
     <key>StandardOutPath</key>
     <string>/Users/aashrith/Projects/buildathon-radar/logs/radar.log</string>

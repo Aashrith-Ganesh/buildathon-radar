@@ -3,7 +3,6 @@ import os
 import sqlite3
 import subprocess
 from pathlib import Path
-from fastapi.testclient import TestClient
 import pytest
 
 from buildathon_radar import antigravity, deliver, rule_engine, tracker_service, tracker_store
@@ -23,7 +22,8 @@ class TestStudentRuleEngine:
             "title": "Bengaluru High School AI Sprint",
             "url": "https://devfolio.co/bengaluru-hs-ai",
             "host": "Bengaluru Tech Foundation",
-            "summary": "Open to all high school students (Class 11 and Class 12). Build LLM agents and GenAI solutions.",
+            "summary": "Build LLM agents and GenAI solutions.",
+            "eligibility_rules": "Open to all high school students (Class 11 and Class 12).",
             "location": "Bengaluru, Karnataka",
             "mode": "in-person",
             "themes": ["AI", "GenAI", "Agents"],
@@ -33,8 +33,8 @@ class TestStudentRuleEngine:
         assert res["eligibility"] == "ELIGIBLE"
         assert res["priority"] == "HIGH PRIORITY"
         assert res["score"] >= 70
-        assert "Class 11/12 eligible" in res["why"]
-        assert "In-person in Bengaluru" in res["why"]
+        assert "high school" in res["eligibility_evidence"].lower()
+        assert "Bengaluru venue" in res["why"]
 
     def test_college_hackathon_marked_unknown_not_ineligible(self):
         item = {
@@ -49,9 +49,8 @@ class TestStudentRuleEngine:
         }
         res = rule_engine.classify_and_score_event(item)
         assert res["eligibility"] == "UNKNOWN"
-        # Relevance score is preserved (not clamped to 69) and marked HIGH PRIORITY for visibility
-        assert res["score"] >= 70
-        assert res["priority"] == "HIGH PRIORITY"
+        assert res["score"] > 0
+        assert res["priority"] != "HIGH PRIORITY"
         assert "verification" in res["why"].lower()
 
     def test_explicit_18_plus_excluded_as_ineligible(self):
@@ -67,7 +66,7 @@ class TestStudentRuleEngine:
         res = rule_engine.classify_and_score_event(item)
         assert res["eligibility"] == "INELIGIBLE"
         assert res["priority"] == "INELIGIBLE"
-        assert res["score"] == 0
+        assert res["score"] > 0
 
     def test_university_students_only_excluded(self):
         item = {
@@ -88,7 +87,8 @@ class TestStudentRuleEngine:
             "title": "Global Agentic AI Hackathon",
             "url": "https://devpost.com/global-agentic-ai",
             "host": "OpenAI / Anthropic Partner",
-            "summary": "Open to all developers worldwide. Build intelligent multi-agent systems.",
+            "summary": "Build intelligent multi-agent systems.",
+            "eligibility_rules": "Anyone can participate.",
             "location": "Online",
             "mode": "online",
             "themes": ["Agentic AI", "LLM", "Deep Learning"],
@@ -97,8 +97,6 @@ class TestStudentRuleEngine:
         }
         res = rule_engine.classify_and_score_event(item)
         assert res["eligibility"] == "ELIGIBLE"
-        assert res["priority"] == "HIGH PRIORITY"
-        assert res["score"] >= 70
         assert res["scoring"]["geo"] == 14  # Online score
 
     def test_cost_and_timing_priorities(self):
@@ -303,7 +301,8 @@ class TestAntigravityIntelligence:
             "source": "Luma",
             "location": "Bengaluru",
             "mode": "in-person",
-            "summary": "Class 11, Class 12 and college builders welcome. Build autonomous agents.",
+            "summary": "Build autonomous agents.",
+            "eligibility_rules": "Class 11 students are welcome.",
         }]
         evals = {
             "e-bengaluru": {"priority": "HIGH PRIORITY", "score": 88, "eligibility": "ELIGIBLE", "why": "Bengaluru local agentic hackathon."}
@@ -340,12 +339,14 @@ class TestAntigravityIntelligence:
 
 class TestTrackerServiceEndpoints:
     @pytest.fixture
-    def client(self, temp_db, monkeypatch):
+    def client(self, temp_db, monkeypatch, local_client):
         monkeypatch.setattr(tracker_service, "DB_PATH", temp_db)
         conn = tracker_store.connect(temp_db)
         tracker_store.upsert_events(conn, [{
             "event_id": "dash-1",
             "title": "Dashboard Event",
+            "provenance": "live",
+            "registration_status": "open",
             "url": "https://dash.test",
             "host": "HostA",
             "source": "Devfolio",
@@ -354,9 +355,9 @@ class TestTrackerServiceEndpoints:
             "event_start": "2026-12-01",
             "event_end": "2026-12-02",
             "registration_deadline": "2026-11-25",
-        }], {"dash-1": {"priority": "HIGH PRIORITY", "score": 88, "eligibility": "ELIGIBLE", "why": "Top pick."}})
+        }], {"dash-1": {"priority": "HIGH PRIORITY", "score": 88, "eligibility": "ELIGIBLE", "why": "Top pick.", "eligibility_evidence": "Open to school students"}})
         conn.close()
-        return TestClient(tracker_service.app)
+        return local_client(tracker_service.app)
 
     def test_dashboard_route_returns_200(self, client):
         resp = client.get("/dashboard")
@@ -387,8 +388,7 @@ class TestDeliveryWithoutEmail:
         digest = "### [Event](https://test.com)\nTest card\n"
         html = "<html><body>Test</body></html>"
         ok = deliver.send_digest(digest, html)
-        # Returns False because email was not sent, but archive is saved
-        assert ok is False
+        assert ok is deliver.DeliveryStatus.SKIPPED
         archive_files = list((tmp_path / "archive").glob("radar_*.md"))
         assert len(archive_files) == 1
         assert "Event" in archive_files[0].read_text()

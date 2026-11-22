@@ -13,6 +13,8 @@ def dummy_email_env(monkeypatch):
     monkeypatch.setenv("EMAIL_ADDRESS", "test@example.com")
     monkeypatch.setenv("EMAIL_PASSWORD", "testpass")
     monkeypatch.setenv("ENABLE_EMAIL", "true")
+    monkeypatch.setattr(deliver, "EMAIL_AVAILABLE", True)
+    monkeypatch.setattr(deliver, "save_html_to_archive", lambda _: None)
 
 
 def _decoded_subject(sent_msg):
@@ -68,7 +70,7 @@ def smtplib_auth_error():
 
 class TestMissingCredentials:
     def test_send_digest_skips_when_no_credentials(self, monkeypatch):
-        monkeypatch.setattr(deliver.os, "getenv", lambda k, default=None: None)
+        monkeypatch.delenv("EMAIL_PASSWORD")
         with patch.object(deliver, "smtplib") as mock_smtplib, patch.object(
             deliver, "save_to_archive"
         ):
@@ -91,7 +93,7 @@ class TestSendDigestResult:
             deliver, "save_to_archive"
         ):
             mock_server = mock_ssl.return_value.__enter__.return_value
-            assert deliver.send_digest("digest", "<html></html>") is True
+            assert deliver.send_digest("digest", "<html></html>") is deliver.DeliveryStatus.SENT
         mock_server.sendmail.assert_called_once()
 
     def test_returns_false_without_credentials(self, monkeypatch):
@@ -99,7 +101,7 @@ class TestSendDigestResult:
         with patch("buildathon_radar.deliver.smtplib.SMTP_SSL") as mock_ssl, patch.object(
             deliver, "save_to_archive"
         ):
-            assert deliver.send_digest("digest", "<html></html>") is False
+            assert deliver.send_digest("digest", "<html></html>") is deliver.DeliveryStatus.FAILED
         mock_ssl.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -119,7 +121,7 @@ class TestSendDigestResult:
                 mock_ssl.side_effect = error
             else:
                 getattr(mock_server, where).side_effect = error
-            assert deliver.send_digest("digest", "<html></html>") is False
+            assert deliver.send_digest("digest", "<html></html>") is deliver.DeliveryStatus.FAILED
 
 
 class TestFailureEmail:
@@ -134,12 +136,11 @@ class TestFailureEmail:
         assert "something broke" in sent_msg
 
     def test_send_failure_email_never_raises_on_smtp_error(self):
-        with patch.object(deliver, "smtplib") as mock_smtplib:
-            mock_smtplib.SMTP_SSL.side_effect = Exception("network down")
+        with patch.object(deliver.smtplib, "SMTP_SSL", side_effect=OSError("network down")):
             deliver.send_failure_email("boom")  # must not raise
 
     def test_send_failure_email_skips_when_no_credentials(self, monkeypatch):
-        monkeypatch.setattr(deliver.os, "getenv", lambda k, default=None: None)
+        monkeypatch.delenv("EMAIL_PASSWORD")
         with patch.object(deliver, "smtplib") as mock_smtplib:
             deliver.send_failure_email("boom")
         mock_smtplib.SMTP_SSL.assert_not_called()
@@ -149,3 +150,18 @@ class TestGetDateRange:
     def test_returns_nonempty_string(self):
         assert isinstance(deliver.get_date_range(), str)
         assert len(deliver.get_date_range()) > 0
+
+
+@pytest.mark.parametrize("flag", ["true", "false"])
+def test_disabled_email_archives_without_credentials_or_smtp(monkeypatch, tmp_path, flag):
+    monkeypatch.setattr(deliver, "EMAIL_AVAILABLE", False)
+    monkeypatch.setattr(deliver, "ARCHIVE_DIR", tmp_path)
+    monkeypatch.setenv("ENABLE_EMAIL", flag)
+    monkeypatch.delenv("EMAIL_ADDRESS")
+    monkeypatch.delenv("EMAIL_PASSWORD")
+    with patch.object(deliver.smtplib, "SMTP") as smtp, patch.object(deliver.smtplib, "SMTP_SSL") as ssl:
+        assert deliver.send_digest("digest", "<html></html>") == deliver.DeliveryStatus.SKIPPED
+        assert deliver.send_failure_email("error") == deliver.DeliveryStatus.SKIPPED
+        smtp.assert_not_called()
+        ssl.assert_not_called()
+    assert list(tmp_path.glob("*.md"))

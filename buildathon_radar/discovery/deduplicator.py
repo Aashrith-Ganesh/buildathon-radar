@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import logging
+import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -52,8 +53,8 @@ def _dates_compatible(d1: Optional[str], d2: Optional[str]) -> bool:
 
 def _title_similarity(t1: str, t2: str) -> float:
     """Calculates token overlap and sequence similarity between two normalized titles."""
-    norm1 = normalize_title(t1)
-    norm2 = normalize_title(t2)
+    norm1 = normalize_title(t1).replace("bangalore", "bengaluru")
+    norm2 = normalize_title(t2).replace("bangalore", "bengaluru")
     if not norm1 or not norm2:
         return 0.0
     if norm1 == norm2:
@@ -78,28 +79,27 @@ def _title_similarity(t1: str, t2: str) -> float:
 
 def are_duplicates(e1: Dict[str, Any], e2: Dict[str, Any]) -> bool:
     """Determines whether two raw or normalized event items represent the same event."""
-    url1 = normalize_url(e1.get("url") or "")
-    url2 = normalize_url(e2.get("url") or "")
-
-    # 1. Exact registration URL match (ignoring tracking params)
-    if url1 and url2 and url1 == url2:
-        return True
-
-    # 2. Announcement URL match
-    ann1 = normalize_url(e1.get("announcement_url") or "")
-    ann2 = normalize_url(e2.get("announcement_url") or "")
-    if ann1 and ann2 and ann1 == ann2:
-        return True
-
-    # 3. High Title similarity + Date compatibility
-    sim = _title_similarity(e1.get("title") or "", e2.get("title") or "")
-    if sim >= 0.70:
-        d1 = e1.get("event_start")
-        d2 = e2.get("event_start")
-        if _dates_compatible(d1, d2):
+    d1, d2 = e1.get("event_start"), e2.get("event_start")
+    if d1 and d2 and not _dates_compatible(d1, d2):
+        return False
+    title1, title2 = e1.get("title") or "", e2.get("title") or ""
+    years1, years2 = (set(re.findall(r"\b20\d{2}\b", title)) for title in (title1, title2))
+    if years1 and years2 and years1 != years2:
+        return False
+    loc1, loc2 = (normalize_title(e.get("location") or "").replace("bangalore", "bengaluru") for e in (e1, e2))
+    if loc1 not in {"", "unknown", "online", "india"} and loc2 not in {"", "unknown", "online", "india"}:
+        if loc1 not in loc2 and loc2 not in loc1:
+            return False
+    for field in ("url", "announcement_url", "registration_url"):
+        first, second = (normalize_url(e.get(field) or "") for e in (e1, e2))
+        if first and first == second:
             return True
-
-    return False
+    host1, host2 = (normalize_title(e.get("host") or "") for e in (e1, e2))
+    return bool(
+        d1 and d2 and host1 and host1 not in {"unknown", "community"}
+        and host1 == host2 and len(normalize_title(title1).split()) > 2
+        and _title_similarity(title1, title2) >= 0.85
+    )
 
 
 def merge_event_records(existing: Dict[str, Any], new_item: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,20 +123,15 @@ def merge_event_records(existing: Dict[str, Any], new_item: Dict[str, Any]) -> D
             "confidence": merged.get("confidence", "Medium"),
         })
 
-    # Check if this new source is already recorded
-    already_recorded = False
-    for s in sources:
-        if s.get("source_name") == new_source_name and normalize_url(s.get("url", "")) == normalize_url(new_source_url):
-            already_recorded = True
-            break
-
-    if not already_recorded and new_source_name:
-        sources.append({
-            "source_name": new_source_name,
-            "url": new_source_url,
-            "announcement_url": new_ann_url,
-            "confidence": new_item.get("confidence", "Medium"),
-        })
+    incoming = new_item.get("discovery_sources") or [{
+        "source_name": new_source_name,
+        "url": new_source_url,
+        "announcement_url": new_ann_url,
+        "confidence": new_item.get("confidence", "Medium"),
+    }]
+    for entry in incoming:
+        if entry not in sources:
+            sources.append(entry)
     merged["discovery_sources"] = sources
 
     # 2. Primary Source / URL selection based on authoritative priority
@@ -153,7 +148,22 @@ def merge_event_records(existing: Dict[str, Any], new_item: Dict[str, Any]) -> D
             merged["summary"] = new_item.get("summary")
 
     # 3. Fill in missing details
-    for field in ["event_start", "event_end", "registration_deadline", "location", "mode", "team_size", "prize"]:
+    for field in ["event_start", "event_end", "registration_deadline", "location", "mode", "team_size", "prize", "host"]:
+        if not merged.get(field) and new_item.get(field):
+            merged[field] = new_item[field]
+
+    if existing.get("registration_status") == "closed" or new_item.get("registration_status") == "closed":
+        merged["registration_status"] = "closed"
+    elif new_item.get("registration_status") == "open":
+        merged["registration_status"] = "open"
+    eligibility_text = dict.fromkeys(
+        text for text in (existing.get("eligibility_rules"), new_item.get("eligibility_rules"))
+        if isinstance(text, str) and text
+    )
+    if eligibility_text:
+        merged["eligibility_rules"] = "\n".join(eligibility_text)
+
+    for field in ("image_url", "country", "registration_url", "participation_fee"):
         if not merged.get(field) and new_item.get(field):
             merged[field] = new_item[field]
 

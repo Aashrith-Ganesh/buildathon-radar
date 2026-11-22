@@ -231,3 +231,6 @@ logs/
 backups/
 archive/
 *.log
+
+# Local cross-process discovery lock
+*.scan.lock

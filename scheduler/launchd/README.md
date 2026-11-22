@@ -5,8 +5,8 @@ This directory contains native macOS `launchd` configuration files replacing Lin
 ## Services
 
 1. **`com.buildathon.radar.plist`**
-   - **Type:** Weekly calendar timer
-   - **Schedule:** Every Sunday at 17:00 IST (5:00 PM IST)
+   - **Type:** Hourly interval timer
+   - **Schedule:** On load and then hourly while the user LaunchAgent is active
    - **Command:** `venv/bin/python main.py`
    - **Working Directory:** `/Users/aashrith/Projects/buildathon-radar`
    - **Logs:** `logs/radar.log` and `logs/radar_error.log`
@@ -57,3 +57,8 @@ cp scheduler/launchd/*.plist ~/Library/LaunchAgents/
 launchctl load -w ~/Library/LaunchAgents/com.buildathon.radar.plist
 launchctl unload ~/Library/LaunchAgents/com.buildathon.radar.plist
 ```
+
+To configure the interval, change `StartInterval` in the installed
+`~/Library/LaunchAgents/com.buildathon.radar.plist` (seconds), then run
+`scripts/manage_launchd.sh start-radar` to reload that installed agent. The
+checked-in default is 3600 seconds.

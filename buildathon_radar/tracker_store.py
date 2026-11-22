@@ -13,6 +13,8 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from dotenv import load_dotenv
 
+from buildathon_radar import personal_tracker
+
 load_dotenv()
 
 DB_FILE = "tracker.db"
@@ -602,7 +604,6 @@ def _seed_blackout_dates_if_empty(conn: sqlite3.Connection):
                     now,
                 ),
             )
-        conn.commit()
 
 
 def _seed_discovery_sources_if_empty(conn: sqlite3.Connection):
@@ -622,7 +623,6 @@ def _seed_discovery_sources_if_empty(conn: sqlite3.Connection):
                 """,
                 (s["source_key"], s["name"], s["category"], s["discovery_method"], s["confidence_level"], now),
             )
-        conn.commit()
 
 
 def check_event_date_overlap(event_start: str | None, event_end: str | None, blackouts: list) -> tuple:
@@ -675,7 +675,7 @@ def recalculate_event_blackout_conflicts(conn: sqlite3.Connection):
     cur = conn.execute("SELECT * FROM blackout_dates WHERE enabled = 1 ORDER BY start_date ASC")
     active_blackouts = [dict(r) for r in cur.fetchall()]
 
-    events = conn.execute("SELECT event_id, event_start, event_end, priority, score, why FROM events").fetchall()
+    events = conn.execute("SELECT event_id, event_start, event_end, priority, score, why, eligibility, provenance FROM events").fetchall()
 
     for e in events:
         eid = e["event_id"]
@@ -703,7 +703,9 @@ def recalculate_event_blackout_conflicts(conn: sqlite3.Connection):
             # Restore priority if previously marked conflict
             if e["priority"] == "CONFLICT (UNAVAILABLE)":
                 sc = e["score"] or 0
-                if sc >= 70:
+                if e["eligibility"] == "INELIGIBLE":
+                    priority = "INELIGIBLE"
+                elif sc >= 70 and (e["eligibility"] == "ELIGIBLE" or e["provenance"] == "legacy"):
                     priority = "HIGH PRIORITY"
                 elif sc >= 45:
                     priority = "MEDIUM PRIORITY"
@@ -756,39 +758,60 @@ def _migrate_schema_if_needed(conn: sqlite3.Connection):
         "confidence": "TEXT DEFAULT 'Medium'",
         "tech_categories": "TEXT DEFAULT '[]'",
         "verification_status": "TEXT DEFAULT 'verified'",
+        "provenance": "TEXT NOT NULL DEFAULT 'legacy'",
+        "registration_status": "TEXT",
+        "scoring": "TEXT DEFAULT '{}'",
+        "eligibility_evidence": "TEXT",
+        "eligibility_rules": "TEXT",
+        "date_source": "TEXT",
     }
 
     for col_name, col_type in columns_to_add.items():
         if col_name not in existing_columns:
-            try:
-                conn.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_type}")
-            except sqlite3.OperationalError:
-                pass
+            conn.execute(f"ALTER TABLE events ADD COLUMN {col_name} {col_type}")
 
-    try:
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_conflict ON events(blackout_conflict)")
-    except Exception:
-        pass
-
-    conn.commit()
+    source_columns = {row[1] for row in conn.execute("PRAGMA table_info(discovery_sources)")}
+    for name in ("last_success_at", "last_failed_at", "last_status"):
+        if name not in source_columns:
+            conn.execute(f"ALTER TABLE discovery_sources ADD COLUMN {name} TEXT")
+    for name in ("last_retrieved", "last_valid", "last_rejected"):
+        if name not in source_columns:
+            conn.execute(f"ALTER TABLE discovery_sources ADD COLUMN {name} INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_conflict ON events(blackout_conflict)")
     _seed_blackout_dates_if_empty(conn)
     _seed_discovery_sources_if_empty(conn)
-    try:
-        recalculate_event_blackout_conflicts(conn)
-    except Exception:
-        pass
+    conn.execute("PRAGMA user_version = 1")
 
 
 def connect(db_path=None):
     """Opens (creating if needed) the tracker SQLite database in WAL mode."""
     path = db_path or DB_FILE
+    if str(path) != ":memory:":
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+        finally:
+            os.close(fd)
     conn = sqlite3.connect(path, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
-    conn.executescript(SCHEMA)
-    _migrate_schema_if_needed(conn)
-    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 2:
+        if version == 0:
+            conn.executescript(SCHEMA)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if version == 0:
+                _migrate_schema_if_needed(conn)
+            if version < 2:
+                personal_tracker.migrate(conn)
+            conn.commit()
+        except Exception:
+            conn.close()
+            raise
     return conn
 
 
@@ -836,7 +859,6 @@ def add_blackout_date(
         """,
         (title.strip(), s, e, category.strip(), (reason or "").strip(), 1 if enabled else 0, now, now),
     )
-    conn.commit()
     new_id = cur.lastrowid
     recalculate_event_blackout_conflicts(conn)
     return new_id
@@ -867,7 +889,6 @@ def update_blackout_date(
         """,
         (title.strip(), s, e, category.strip(), (reason or "").strip(), 1 if enabled else 0, now, blackout_id),
     )
-    conn.commit()
     if cur.rowcount > 0:
         recalculate_event_blackout_conflicts(conn)
         return True
@@ -877,7 +898,6 @@ def update_blackout_date(
 def delete_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> bool:
     """Deletes a blackout date and recomputes event conflicts."""
     cur = conn.execute("DELETE FROM blackout_dates WHERE id = ?", (blackout_id,))
-    conn.commit()
     if cur.rowcount > 0:
         recalculate_event_blackout_conflicts(conn)
         return True
@@ -886,16 +906,12 @@ def delete_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> bool:
 
 def toggle_blackout_date(conn: sqlite3.Connection, blackout_id: int) -> bool:
     """Toggles enabled state of a blackout entry and recomputes event conflicts."""
-    row = conn.execute("SELECT enabled FROM blackout_dates WHERE id = ?", (blackout_id,)).fetchone()
-    if not row:
-        return False
-    new_enabled = 0 if row["enabled"] else 1
-    now = _now_ist()
-    conn.execute(
-        "UPDATE blackout_dates SET enabled = ?, updated_at = ? WHERE id = ?",
-        (new_enabled, now, blackout_id),
+    result = conn.execute(
+        "UPDATE blackout_dates SET enabled = 1 - enabled, updated_at = ? WHERE id = ?",
+        (_now_ist(), blackout_id),
     )
-    conn.commit()
+    if not result.rowcount:
+        return False
     recalculate_event_blackout_conflicts(conn)
     return True
 
@@ -939,6 +955,8 @@ def update_discovery_source_status(
     events_count: int = 0,
     error: str | None = None,
     error_msg: str | None = None,
+    retrieved: int | None = None,
+    *, health=None, commit=True,
 ):
     now = _now_ist()
     err_text = error or error_msg
@@ -949,11 +967,11 @@ def update_discovery_source_status(
             SET last_scan = ?,
                 events_discovered = events_discovered + ?,
                 success_count = success_count + 1,
-                last_error = NULL,
+                last_error = ?,
                 updated_at = ?
             WHERE source_key = ?
             """,
-            (now, events_count, now, source_key),
+            (now, events_count, err_text, now, source_key),
         )
     else:
         conn.execute(
@@ -967,10 +985,19 @@ def update_discovery_source_status(
             """,
             (now, str(err_text or "Scan error"), now, source_key),
         )
-    conn.commit()
+    if retrieved is not None:
+        status = health or ("ok" if success else "failed")
+        time_column = "last_success_at" if success else "last_failed_at"
+        conn.execute(
+            f"""UPDATE discovery_sources SET {time_column} = ?, last_status = ?,
+            last_retrieved = ?, last_valid = ?, last_rejected = ? WHERE source_key = ?""",
+            (now, status, retrieved, events_count, retrieved - events_count, source_key),
+        )
+    if commit:
+        conn.commit()
 
 
-def log_discovery_scan(conn: sqlite3.Connection, scan_data: dict) -> int:
+def log_discovery_scan(conn: sqlite3.Connection, scan_data: dict, *, commit=True) -> int:
     now = _now_ist()
     cur = conn.execute(
         """
@@ -991,7 +1018,8 @@ def log_discovery_scan(conn: sqlite3.Connection, scan_data: dict) -> int:
             json.dumps(scan_data.get("details", {})),
         ),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return cur.lastrowid
 
 
@@ -1007,15 +1035,12 @@ def get_last_discovery_scan(conn: sqlite3.Connection) -> dict | None:
     return dict(row) if row else None
 
 
-def upsert_events(conn, items, evaluated_map=None):
+def upsert_events(conn, items, evaluated_map=None, *, commit=True):
     """Upserts full event metadata into the database while preserving existing user states.
     evaluated_map is optional mapping of event_id -> evaluated dict with score, priority, why."""
     now = _now_ist()
     # Fetch active blackout dates for overlap check during upsert
-    try:
-        active_blackouts = get_blackout_dates(conn, enabled_only=True)
-    except Exception:
-        active_blackouts = []
+    active_blackouts = get_blackout_dates(conn, enabled_only=True)
 
     for item in items:
         event_id = item.get("event_id")
@@ -1027,6 +1052,8 @@ def upsert_events(conn, items, evaluated_map=None):
         score = eval_info.get("score") if eval_info.get("score") is not None else item.get("score", 0)
         why = eval_info.get("why") or item.get("why") or ""
         eligibility = eval_info.get("eligibility") or item.get("eligibility") or "UNKNOWN"
+        if item.get("provenance") == "live" and not eval_info.get("eligibility_evidence"):
+            eligibility = "UNKNOWN"
         age_restrictions = eval_info.get("age_restrictions") or item.get("age_restrictions") or "None specified"
         norm_url = normalize_url(item.get("url") or "")
 
@@ -1036,7 +1063,7 @@ def upsert_events(conn, items, evaluated_map=None):
         announcement_url = item.get("announcement_url") or item.get("original_url") or ""
         confidence = item.get("confidence") or "Medium"
         tech_cats = json.dumps(item.get("tech_categories") or [])
-        verification_status = item.get("verification_status") or "verified"
+        verification_status = item.get("verification_status") or "unverified"
 
         incoming_source_entry = {
             "source": item.get("source") or "Unknown",
@@ -1050,19 +1077,20 @@ def upsert_events(conn, items, evaluated_map=None):
             (event_id,),
         ).fetchone()
 
-        merged_sources = [incoming_source_entry]
+        merged_sources = list(item.get("discovery_sources") or [incoming_source_entry])
         if existing_row:
-            try:
-                prev_sources = json.loads(existing_row["discovery_sources"] or "[]")
-                if isinstance(prev_sources, list):
-                    seen_urls = {incoming_source_entry["url"]}
-                    for ps in prev_sources:
-                        u = ps.get("url")
-                        if u and u not in seen_urls:
-                            seen_urls.add(u)
-                            merged_sources.append(ps)
-            except Exception:
-                pass
+            previous = json.loads(existing_row["discovery_sources"] or "[]")
+            seen = {(entry.get("source") or entry.get("source_name"), entry.get("url"), entry.get("announcement_url")): entry
+                    for entry in merged_sources}
+            for entry in previous:
+                key = (entry.get("source") or entry.get("source_name"), entry.get("url"), entry.get("announcement_url"))
+                if key in seen:
+                    first = entry.get("first_observed_at") or entry.get("discovered_at")
+                    if first:
+                        seen[key]["first_observed_at"] = first
+                else:
+                    seen[key] = entry
+                    merged_sources.append(entry)
             if not announcement_url and existing_row["announcement_url"]:
                 announcement_url = existing_row["announcement_url"]
 
@@ -1120,7 +1148,7 @@ def upsert_events(conn, items, evaluated_map=None):
                 confidence            = excluded.confidence,
                 tech_categories       = excluded.tech_categories,
                 verification_status   = excluded.verification_status,
-                last_verified         = excluded.last_verified,
+                last_verified         = COALESCE(excluded.last_verified, events.last_verified),
                 updated_at            = excluded.updated_at
             """,
             (
@@ -1136,7 +1164,7 @@ def upsert_events(conn, items, evaluated_map=None):
                 start_date,
                 end_date,
                 item.get("registration_deadline"),
-                item.get("team_size") or "3-5 preferred",
+                item.get("team_size"),
                 eligibility,
                 age_restrictions,
                 item.get("prize") or "",
@@ -1152,11 +1180,29 @@ def upsert_events(conn, items, evaluated_map=None):
                 tech_cats,
                 verification_status,
                 now,
-                now,
+                now if item.get("provenance") == "live" and verification_status == "verified" else None,
                 now,
             ),
         )
-    conn.commit()
+        conn.execute(
+            """UPDATE events SET provenance = ?, registration_status = ?, scoring = ?,
+            eligibility_evidence = ?, eligibility_rules = ?, date_source = ?,
+            slug = COALESCE(slug, ?), last_observed = ?,
+            registration_url = COALESCE(?, registration_url), country = COALESCE(?, country),
+            image_url = COALESCE(?, image_url), prize_amount = COALESCE(?, prize_amount),
+            prize_currency = COALESCE(?, prize_currency), participation_fee = COALESCE(?, participation_fee),
+            restrictions = COALESCE(?, restrictions) WHERE event_id = ?""",
+            (item.get("provenance", "legacy"), item.get("registration_status"),
+             json.dumps(eval_info.get("scoring", {})), eval_info.get("eligibility_evidence"), item.get("eligibility_rules") if isinstance(item.get("eligibility_rules"), str) else None,
+             "listing" if item.get("provenance") == "live" and start_date else None,
+             personal_tracker.event_slug(item.get("title") or "Hackathon", event_id),
+             now if item.get("provenance") == "live" else None,
+             item.get("registration_url"), item.get("country"), item.get("image_url"),
+             item.get("prize_amount"), item.get("prize_currency"), item.get("participation_fee"),
+             json.dumps(item["restrictions"]) if "restrictions" in item else None, event_id),
+        )
+    if commit:
+        conn.commit()
 
 
 def upsert_seen(conn, items):
@@ -1191,6 +1237,8 @@ def apply_action(conn, action, event_id):
         return "noop", None
 
     target_state = ACTION_TO_STATE[action]
+    if not conn.in_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     row = conn.execute("SELECT * FROM events WHERE event_id = ?", (event_id,)).fetchone()
 
     if row is None:
@@ -1199,20 +1247,12 @@ def apply_action(conn, action, event_id):
 
     current_rank = STATE_RANK.get(row["state"], 0)
     target_rank = STATE_RANK.get(target_state, 0)
-    if action != "reject" and current_rank >= target_rank:
+    if row["state"] == target_state or (action != "reject" and current_rank >= target_rank):
         log_action(conn, event_id, action, "noop")
         return "noop", row
 
-    ts_column = (
-        "tracked_at"
-        if target_state == "tracked"
-        else ("applied_at" if target_state == "applied" else "rejected_at")
-    )
-    conn.execute(
-        f"UPDATE events SET state = ?, {ts_column} = ?, updated_at = ? WHERE event_id = ?",
-        (target_state, now, now, event_id),
-    )
-    conn.commit()
+    status = {"track": "interested", "applied": "registered", "reject": "not_for_me"}[action]
+    personal_tracker.save_entry(conn, event_id, status, None, now)
     log_action(conn, event_id, action, "ok")
     updated_row = conn.execute("SELECT * FROM events WHERE event_id = ?", (event_id,)).fetchone()
     return "ok", updated_row
@@ -1331,12 +1371,13 @@ def delete_events_before_date(conn, cutoff_date: str) -> int:
             WHERE event_id IN (
                 SELECT event_id FROM events
                 WHERE COALESCE(event_start, event_end) < ?
+                AND event_id NOT IN (SELECT event_id FROM personal_tracker)
             )
             """,
             (cutoff_date,),
         )
         cur = conn.execute(
-            "DELETE FROM events WHERE COALESCE(event_start, event_end) < ?",
+            "DELETE FROM events WHERE event_id NOT IN (SELECT event_id FROM personal_tracker) AND COALESCE(event_start, event_end) < ?",
             (cutoff_date,),
         )
         return cur.rowcount
@@ -1361,80 +1402,103 @@ def get_upcoming_deadlines(conn, limit=10, min_date=None, exclude_conflicts=True
     return conn.execute(query, params).fetchall()
 
 
-def get_dashboard_stats(conn: sqlite3.Connection) -> dict:
-    """Returns comprehensive aggregated dashboard metrics."""
-    today = _datetime.now(IST).strftime("%Y-%m-%d")
+def is_bengaluru_listing(row):
+    return str(row["mode"] or "").lower() != "online" and bool(re.search(
+        r"\b(bengaluru|bangalore|koramangala|indiranagar|whitefield|electronic city|hebbal)\b",
+        row["location"] or "", re.I,
+    ))
 
-    all_rows = conn.execute("SELECT * FROM events").fetchall()
-    upcoming_rows = [
-        r for r in all_rows
-        if (r["event_end"] or r["event_start"] or "9999-12-31")[:10] >= today
+
+def dashboard_views(conn):
+    from buildathon_radar.discovery.integrity import lifecycle
+
+    today = _datetime.now(IST).date()
+    date_text = today.isoformat()
+    cutoff = (today + timedelta(days=7)).isoformat()
+    rows = [dict(row) for row in conn.execute(
+        """SELECT events.*, (SELECT status FROM personal_tracker WHERE user_id='local'
+            AND personal_tracker.event_id=events.event_id) AS tracker_status
+           FROM events ORDER BY score DESC, event_start, event_id"""
+    )]
+    views = {key: [] for key in ("discover", "open", "upcoming", "unverified", "history", "eligible", "bengaluru",
+                                "closing_soon", "high", "free_weekend", "excluded", "tracked", "applied", "discard")}
+    for row in rows:
+        status = row["lifecycle"] = lifecycle(row, date_text)
+        if row["state"] == "rejected":
+            views["discard"].append(row)
+            continue
+        if row["state"] in {"tracked", "applied"}:
+            views[row["state"]].append(row)
+        upcoming = bool(row["event_start"] and row["event_start"] >= date_text)
+        if status in {"Unverified history", "Completed", "Registration closed"}:
+            views["history"].append(row)
+            if status != "Registration closed" or not upcoming:
+                continue
+        views["discover"].append(row)
+        if row["blackout_conflict"]:
+            views["excluded"].append(row)
+        if upcoming:
+            views["upcoming"].append(row)
+        if (not row["event_start"] or row["eligibility"] == "UNKNOWN"
+                or row["registration_status"] is None):
+            views["unverified"].append(row)
+        if is_bengaluru_listing(row):
+            views["bengaluru"].append(row)
+        deadline = row["registration_deadline"]
+        if status != "Registration closed" and deadline and date_text <= deadline <= cutoff:
+            views["closing_soon"].append(row)
+        if row["eligibility"] == "ELIGIBLE" and row["eligibility_evidence"]:
+            views["eligible"].append(row)
+            if row["priority"] == "HIGH PRIORITY" and status != "Registration closed":
+                views["high"].append(row)
+        if "Free & Weekend" in (row["why"] or "") and status != "Registration closed":
+            views["free_weekend"].append(row)
+        if (status == "Registration open" and not row["blackout_conflict"]
+                and row["eligibility"] != "INELIGIBLE"):
+            views["open"].append(row)
+    views["closing_soon"].sort(key=lambda row: row["registration_deadline"])
+    views["discover"].sort(key=lambda row: (
+        bool(row["blackout_conflict"]), row["eligibility"] == "INELIGIBLE", not row["event_start"],
+    ))
+    views["discard"].sort(key=lambda row: row["rejected_at"] or "", reverse=True)
+    return views
+
+
+def get_dashboard_stats(conn, views=None):
+    from buildathon_radar.rule_engine import load_profile
+
+    if views is None:
+        views = dashboard_views(conn)
+    profile = load_profile().get("user_preferences", {})
+    local_ids = {row["event_id"] for row in views["bengaluru"]}
+    candidates = [
+        row for row in views["eligible"] if row["event_start"] and row in views["open"]
+        and (not profile.get("only_in_person") or row["mode"] in {"in-person", "offline"})
+        and (not profile.get("target_city_only") or row["event_id"] in local_ids)
     ]
-
-    total_upcoming = len(upcoming_rows)
-    blackout_excluded = sum(1 for r in upcoming_rows if r["blackout_conflict"] == 1)
-    eligible_count = sum(
-        1 for r in upcoming_rows
-        if r["blackout_conflict"] == 0
-        and str(r["eligibility"]).upper() == "ELIGIBLE"
-        and r["date_status"] == "verified"
-    )
-    unverified_count = sum(
-        1 for r in upcoming_rows
-        if r["date_status"] == "uncertain" or str(r["eligibility"]).upper() == "UNKNOWN"
-    )
-    tracked_count = sum(1 for r in all_rows if r["state"] == "tracked")
-    applied_count = sum(1 for r in all_rows if r["state"] == "applied")
-
-    # Bangalore upcoming non-conflicted events
-    bengaluru_keywords = ["bengaluru", "bangalore", "koramangala", "indiranagar", "whitefield", "hsr", "electronic city"]
-    bengaluru_events = [
-        r for r in upcoming_rows
-        if str(r["mode"]).lower() in ("in-person", "hybrid", "offline")
-        and any(
-            k in str(r["location"]).lower()
-            or k in str(r["summary"]).lower()
-            or k in str(r["title"]).lower()
-            for k in bengaluru_keywords
-        )
-    ]
-    bangalore_count = len(bengaluru_events)
-
-    # Next eligible hackathon
-    eligible_upcoming = [
-        r for r in upcoming_rows
-        if r["blackout_conflict"] == 0
-        and str(r["eligibility"]).upper() == "ELIGIBLE"
-        and r["date_status"] == "verified"
-        and r["state"] != "rejected"
-    ]
-    eligible_upcoming.sort(key=lambda x: (x["event_start"] or "9999-12-31", -int(x["score"] or 0)))
-    next_eligible_event = dict(eligible_upcoming[0]) if eligible_upcoming else None
-
-    # Upcoming deadlines closing within 7 days
-    in_7_days = (_datetime.now(IST) + timedelta(days=7)).strftime("%Y-%m-%d")
-    deadlines_soon = [
-        r for r in upcoming_rows
-        if r["registration_deadline"]
-        and today <= str(r["registration_deadline"])[:10] <= in_7_days
-        and r["blackout_conflict"] == 0
-    ]
-
-    # Recently discovered events (last 5)
-    recent_sorted = sorted(all_rows, key=lambda x: str(x["first_seen"]), reverse=True)
-    recently_discovered = [dict(r) for r in recent_sorted[:5]]
-
+    candidates.sort(key=lambda row: (row["event_start"], -int(row["score"] or 0)))
+    latest_scan = get_last_discovery_scan(conn)
+    scan_id = latest_scan["id"] if latest_scan else None
+    last_success = conn.execute("SELECT MAX(last_success_at) FROM discovery_sources").fetchone()[0]
+    stale = not last_success or (_datetime.now(IST) - _datetime.fromisoformat(last_success)) > timedelta(hours=48)
     return {
-        "total_upcoming": total_upcoming,
-        "eligible_count": eligible_count,
-        "blackout_excluded_count": blackout_excluded,
-        "unverified_count": unverified_count,
-        "bangalore_count": bangalore_count,
-        "closing_soon_count": len(deadlines_soon),
-        "tracked_count": tracked_count,
-        "applied_count": applied_count,
-        "next_eligible_event": next_eligible_event,
-        "recently_discovered": recently_discovered,
+        "last_scan_id": scan_id,
+        "scan_failures": latest_scan["failed_sources"] if latest_scan else 0,
+        "last_success_at": last_success,
+        "stale": stale,
+        "discard_count": len(views["discard"]),
+        "discovered_count": len(views["discover"]),
+        "total_upcoming": len(views["open"]),
+        "upcoming_count": len(views["upcoming"]),
+        "eligible_count": len(views["eligible"]),
+        "blackout_excluded_count": len(views["excluded"]),
+        "unverified_count": len(views["unverified"]),
+        "bangalore_count": len(views["bengaluru"]),
+        "closing_soon_count": len(views["closing_soon"]),
+        "tracked_count": len(views["tracked"]),
+        "applied_count": len(views["applied"]),
+        "next_eligible_event": candidates[0] if candidates else None,
+        "recently_discovered": sorted(views["upcoming"], key=lambda row: row["first_seen"] or "", reverse=True)[:5],
     }
 
 
@@ -1456,7 +1520,7 @@ def sign_action(action, event_id, secret=None):
 
 
 def verify_action(action, event_id, token, secret=None):
-    if not token:
+    if not isinstance(token, str) or not re.fullmatch(r"[0-9a-f]{20}", token):
         return False
     expected = sign_action(action, event_id, secret=secret)
     if expected is None:

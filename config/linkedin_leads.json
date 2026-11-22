@@ -1,0 +1,33 @@
+{
+  "checked_on": "2026-11-22",
+  "leads": [
+    {
+      "title": "CODERED '26",
+      "publisher": "Entrepreneurship Cell, BMSIT&M",
+      "description": "The announcement lists a product development challenge in Bengaluru on 28–29 December. Check the organizer for registration details and eligibility.",
+      "url": "https://in.linkedin.com/company/ecellbmsit",
+      "review_until": "2026-12-29"
+    },
+    {
+      "title": "AgentMaX Hackathon",
+      "publisher": "3AI and Sash.Ai",
+      "description": "The announcement mentions a 24 November submission deadline and a Bengaluru showcase on 3 December. Check whether entries are still accepted and whether school students can participate.",
+      "url": "https://in.linkedin.com/company/3aiplatform",
+      "review_until": "2026-11-24"
+    },
+    {
+      "title": "HackFusion 4",
+      "publisher": "SWAG Developer’s Club and GDG",
+      "description": "The GDG chapter shared a 29 December hackathon with an online submission round and an on-site round in Nanded. Check the organizer for the application deadline and eligibility.",
+      "url": "https://in.linkedin.com/company/gdgc-met",
+      "review_until": "2026-12-29"
+    },
+    {
+      "title": "Swiric Grand Innovation Challenge",
+      "publisher": "Swiric",
+      "description": "The announcement lists 28 November for registration and 15 December for project submission. Confirm the application details and eligibility with Swiric.",
+      "url": "https://in.linkedin.com/company/swiric",
+      "review_until": "2026-11-28"
+    }
+  ]
+}

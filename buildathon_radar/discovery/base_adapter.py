@@ -3,11 +3,18 @@ from __future__ import annotations
 import logging
 import re
 import urllib.request
+from urllib.error import HTTPError
+from urllib.parse import urlsplit
+from urllib.robotparser import RobotFileParser
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("buildathon_radar.discovery")
+
+
+class RobotsDenied(OSError):
+    pass
 
 
 class BaseSourceAdapter(ABC):
@@ -46,10 +53,28 @@ class BaseSourceAdapter(ABC):
         if headers:
             req_headers.update(headers)
 
-        req = urllib.request.Request(url, headers=req_headers)
-        with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
-            charset = resp.headers.get_content_charset() or "utf-8"
-            return resp.read().decode(charset, errors="replace")
+        def read(target):
+            req = urllib.request.Request(target, headers=req_headers)
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as resp:
+                charset = resp.headers.get_content_charset() or "utf-8"
+                data = resp.read(2_000_001)
+                if len(data) > 2_000_000:
+                    raise ValueError("Response exceeded size limit")
+                return data.decode(charset, errors="replace")
+
+        target = urlsplit(url)
+        robots_url = f"{target.scheme}://{target.netloc}/robots.txt"
+        try:
+            robots_text = read(robots_url)
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+        else:
+            rules = RobotFileParser()
+            rules.parse(robots_text.splitlines())
+            if not rules.can_fetch("BuildathonRadar", url):
+                raise RobotsDenied()
+        return read(url)
 
     def clean_text(self, text: Optional[str]) -> str:
         if not text:
@@ -65,35 +90,30 @@ class BaseSourceAdapter(ABC):
         pattern = r"https?://[^\s<>\"']+"
         return re.findall(pattern, text)
 
-    def parse_date_safe(self, text: Optional[str]) -> Optional[str]:
-        """Attempts to parse varied date representations into YYYY-MM-DD."""
-        if not text:
-            return None
-        text = text.strip()
-        # Direct YYYY-MM-DD
-        m = re.search(r"\b(202[5-9]-\d{2}-\d{2})\b", text)
-        if m:
-            return m.group(1)
-
-        # Common format: "Nov 28, 2026" or "28 Nov 2026"
-        month_map = {
-            "jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05", "jun": "06",
-            "jul": "07", "aug": "08", "sep": "09", "oct": "10", "nov": "11", "dec": "12",
-            "january": "01", "february": "02", "march": "03", "april": "04", "june": "06",
-            "july": "07", "august": "08", "september": "09", "october": "10", "november": "11", "december": "12"
-        }
-        m_named = re.search(r"\b([a-zA-Z]{3,9})\s+(\d{1,2}),?\s+(202[5-9])\b", text)
-        if m_named:
-            mon_str, day_str, yr_str = m_named.groups()
-            mon_num = month_map.get(mon_str.lower())
-            if mon_num:
-                return f"{yr_str}-{mon_num}-{int(day_str):02d}"
-
-        m_named2 = re.search(r"\b(\d{1,2})\s+([a-zA-Z]{3,9})\s+(202[5-9])\b", text)
-        if m_named2:
-            day_str, mon_str, yr_str = m_named2.groups()
-            mon_num = month_map.get(mon_str.lower())
-            if mon_num:
-                return f"{yr_str}-{mon_num}-{int(day_str):02d}"
-
+    @staticmethod
+    def registration_status(value):
+        if isinstance(value, str) and value.lower() in {"open", "closed"}:
+            return value.lower()
         return None
+
+    def parse_date_safe(self, value: object) -> Optional[str]:
+        """Parse a listing date and use the calendar's India time zone for instants."""
+        india = timezone(timedelta(hours=5, minutes=30))
+        try:
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if abs(value) >= 10**11:
+                    value /= 1000
+                if abs(value) < 10**8:
+                    return None
+                return datetime.fromtimestamp(value, india).date().isoformat()
+            if not isinstance(value, str):
+                return None
+            value = value.strip()
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                return date.fromisoformat(value).isoformat()
+            timestamp = datetime.fromisoformat(value)
+            if timestamp.tzinfo:
+                timestamp = timestamp.astimezone(india)
+            return timestamp.date().isoformat()
+        except (ValueError, OverflowError, OSError):
+            return None
