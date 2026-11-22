@@ -1873,8 +1873,8 @@ def _detect_blackout_institution(title: str, reason: str, category: str) -> str:
     c = (category or "").lower()
     if "allen" in r or "allen" in t or "internal test" in t or "advanced test" in t or "main test" in t:
         return "ALLEN Career Institute (JEE Coaching)"
-    if "grade-11" in r or "grade 11" in t or "pre-board" in t or "ct" in t or "mid term" in t or "revision test" in t:
-        return "DPS Bangalore North (CBSE Grade 11)"
+    if "grade-11" in r or "grade 11" in t or "pre-board" in t or "ct" in t or "mid term" in t or "revision test" in t or "amaatra" in r or "amaatra" in t or "dps" in r or "dps" in t:
+        return "The Amaatra Academy (CBSE Grade 11)"
     if "examination" in c or "exam" in t or "board" in t:
         return "CBSE / School Examination Board"
     return "Personal Schedule"
@@ -2860,7 +2860,7 @@ window.ALL_BLACKOUTS = {blackouts_json};
 
     <div class="cal-legend-bar">
       <span class="legend-item"><span class="legend-dot dot-exam"></span> Examination Period</span>
-      <span class="legend-item"><span class="legend-dot dot-academic"></span> Academic Test (DPS Pre-boards / ALLEN JEE)</span>
+      <span class="legend-item"><span class="legend-dot dot-academic"></span> Academic Test (The Amaatra Academy Pre-boards / ALLEN JEE)</span>
       <span class="legend-item"><span class="legend-dot dot-personal"></span> Personal Commitment</span>
       <span class="legend-item"><span class="legend-dot dot-free"></span> Free Day (Open for Hackathons)</span>
     </div>
