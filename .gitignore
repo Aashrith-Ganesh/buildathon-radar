@@ -225,12 +225,25 @@ scheduler_log.txt
 tracker.db
 tracker.db-wal
 tracker.db-shm
+*.db
+*.db-wal
+*.db-shm
 
 # Local logs and backups
 logs/
 backups/
-archive/
 *.log
+*.bak
 
 # Local cross-process discovery lock
 *.scan.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Environment and secrets
+.env
+.env.*
+!.env.example

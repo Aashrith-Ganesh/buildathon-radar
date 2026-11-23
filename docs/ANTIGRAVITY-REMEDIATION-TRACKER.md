@@ -99,3 +99,15 @@ The Full Audit and Functional QA reuse F-IDs for different findings. Both mappin
 ## Feature expansion follow-up
 
 The original Freebuff statuses above remain historical remediation records. The expansion adds a SQLite tracker with notes and history, stable event pages, a local write unlock, richer source diagnostics, enrichment and safe thumbnails. These additions do not close unresolved audit items. The hourly launchd agent is now loaded and was verified separately during the expansion. See [Feature expansion report](FEATURE-EXPANSION-REPORT.md) for the implementation and its limitations.
+
+## Release v0.1.0-alpha Readiness & Audit Closeout
+
+The release milestone `v0.1.0-alpha` finalizes both the audit remediation and user-approved feature expansions:
+
+1. **Personal Tracker Unlocked:** Unlocked `/tracker` and `/api/tracker` for direct loopback access without requiring a settings password.
+2. **Interactive Academic Calendar:** Added full visual monthly calendar grid at `/calendar` with day badges and rich hover tooltips detailing examination names, organizing schools/boards, reasons, and active conflict statuses.
+3. **Blackout Rule Preservation:** Retained all 46 examination blackout rules covering 69 unique calendar days.
+4. **Student Affiliation Update:** Updated student affiliation to **The Amaatra Academy** (Bengaluru) in `config/profile.json` and web templates.
+5. **Opportunity Database:** Registered HackFusion 4.0 (`hackfusion-4-sggs-nanded`) into verified SQLite opportunities.
+6. **Release Artifacts & Documentation:** Reorganized real screenshot assets into `docs/screenshots/`, compiled comprehensive 21-section `README.md`, authored `RELEASE-NOTES-v0.1.0-alpha.md`, and prepared `RELEASE-READINESS-REPORT.md`.
+7. **Verification:** Verified 444/444 pytest unit and integration tests passing in ~1.08s, `plutil -lint` clean, and `pip check` clean. Ready for annotated tag `v0.1.0-alpha`.
