@@ -130,7 +130,7 @@ function doPost(e) {
     // 6. Render Email Formats
     var meta = payload.meta || {};
     var featured = payload.featured_hackathons || [];
-    var subject = stripEmojis('Buildathon Radar | ' + (meta.date_display || 'Weekly Digest') + ' | ' + featured.length + ' Featured Events');
+    var subject = stripEmojis('Buildathon Weekly Radar - ' + (meta.date_display || 'Weekly Digest') + ' - ' + featured.length + ' Opportunities');
 
     var htmlBody = renderDigestHtml(payload);
     var textBody = renderDigestPlainText(payload);
