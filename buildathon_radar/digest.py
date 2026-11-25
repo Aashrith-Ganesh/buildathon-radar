@@ -16,15 +16,15 @@ TRACKER_BASE = os.getenv("TRACKER_BASE_URL", "https://radar.job-joseph.com").rst
 TIER_ORDER = ["must_see", "worth_a_look", "radar"]
 
 TIER_HEADERS = {
-    "must_see": "## 🔥 Must-see",
-    "worth_a_look": "## 👀 Worth a look",
-    "radar": "## 📡 On the radar (online / global)",
+    "must_see": "## Must-see",
+    "worth_a_look": "## Worth a look",
+    "radar": "## On the radar (online / global)",
 }
 
 TIER_LABELS = {
-    "must_see": "🔥 Must-see",
-    "worth_a_look": "👀 Worth a look",
-    "radar": "📡 On the radar (online / global)",
+    "must_see": "Must-see",
+    "worth_a_look": "Worth a look",
+    "radar": "On the radar (online / global)",
 }
 
 FONT_STACK = "-apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif"
@@ -478,6 +478,35 @@ def _calc_days_left(date_str: Optional[str], today_date: date) -> Optional[int]:
         return None
 
 
+EMOJI_REGEX = re.compile(
+    "["
+    "\U0001f600-\U0001f64f"
+    "\U0001f300-\U0001f5ff"
+    "\U0001f680-\U0001f6ff"
+    "\U0001f700-\U0001f77f"
+    "\U0001f780-\U0001f7ff"
+    "\U0001f800-\U0001f8ff"
+    "\U0001f900-\U0001f9ff"
+    "\U0001fa00-\U0001fa6f"
+    "\U0001fa70-\U0001faff"
+    "\U00002702-\U000027b0"
+    "\U000024c2-\U0001f251"
+    "\U00002600-\U000026ff"
+    "\U00002300-\U000023ff"
+    "\U0000fe00-\U0000fe0f"
+    "\U0000200d"
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def strip_emojis(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    cleaned = EMOJI_REGEX.sub("", str(text))
+    return " ".join(cleaned.split()).strip()
+
+
 def _format_digest_event(row: Dict[str, Any], today_date: date, base_url: str) -> Dict[str, Any]:
     start = row.get("event_start")
     end = row.get("event_end") or start
@@ -506,15 +535,15 @@ def _format_digest_event(row: Dict[str, Any], today_date: date, base_url: str) -
     track_url = _action_url("track", event_id) or f"{base_url}/event/{event_id}"
     applied_url = _action_url("applied", event_id) or f"{base_url}/event/{event_id}"
 
-    loc = row.get("location") or "Location Unspecified"
+    loc = strip_emojis(row.get("location") or "Location Unspecified")
     is_blr = tracker_store.is_bengaluru_listing(row)
 
     return {
         "event_id": event_id,
-        "title": row.get("title") or "Untitled Event",
-        "host": row.get("host") if row.get("host") and row.get("host") != "Unknown" else (row.get("source") or "Community Organizer"),
-        "source": row.get("source") or "Direct Discovery",
-        "summary": row.get("summary") or "No description provided.",
+        "title": strip_emojis(row.get("title") or "Untitled Event"),
+        "host": strip_emojis(row.get("host") if row.get("host") and row.get("host") != "Unknown" else (row.get("source") or "Community Organizer")),
+        "source": strip_emojis(row.get("source") or "Direct Discovery"),
+        "summary": strip_emojis(row.get("summary") or "No description provided."),
         "location": loc,
         "mode": (row.get("mode") or "in-person").lower(),
         "event_start": start,
@@ -525,14 +554,14 @@ def _format_digest_event(row: Dict[str, Any], today_date: date, base_url: str) -
         "days_until_deadline": days_left,
         "eligibility": elig,
         "eligibility_label": elig_label,
-        "age_restrictions": row.get("age_restrictions") or "None specified",
-        "team_size": row.get("team_size") or "Open / Solo or Teams",
-        "prize": prize_str if prize_str and prize_str != "0" else None,
-        "prize_display": prize_str if prize_str and prize_str != "0" else "Not specified",
+        "age_restrictions": strip_emojis(row.get("age_restrictions") or "None specified"),
+        "team_size": strip_emojis(row.get("team_size") or "Open / Solo or Teams"),
+        "prize": strip_emojis(prize_str) if prize_str and prize_str != "0" else None,
+        "prize_display": strip_emojis(prize_str) if prize_str and prize_str != "0" else "Not specified",
         "url": row.get("url") or "#",
         "score": row.get("score") or 0,
         "priority": row.get("priority") or "MEDIUM PRIORITY",
-        "why": row.get("why") or "Matches Class 11/12 student technology and Bengaluru preferences.",
+        "why": strip_emojis(row.get("why") or "Matches Class 11/12 student technology and Bengaluru preferences."),
         "is_bengaluru": is_blr,
         "is_free_weekend": "Free & Weekend" in (row.get("why") or ""),
         "track_url": track_url,
