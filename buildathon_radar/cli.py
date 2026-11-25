@@ -67,6 +67,12 @@ def main():
     backup_parser = subparsers.add_parser("backup", help="Create a timestamped backup of the database")
     backup_parser.add_argument("--dest", default="backups", help="Destination folder")
 
+    # digest
+    digest_parser = subparsers.add_parser("digest", help="Export or preview weekly digest data")
+    digest_parser.add_argument("--limit", type=int, default=5, help="Max featured hackathons")
+    digest_parser.add_argument("--output", help="Optional path to save digest JSON")
+    digest_parser.add_argument("--json", action="store_true", help="Print raw JSON to stdout")
+
     # prune
     prune_parser = subparsers.add_parser("prune", help="Remove events before a cutoff date")
     prune_parser.add_argument("--before", default="2026-11-22", help="Cutoff date YYYY-MM-DD (defaults to 2026-11-22)")
@@ -195,6 +201,27 @@ def main():
             print(f"Database backed up to: {backup_path}")
         else:
             print(f"Database {db_file} does not exist yet; nothing to backup.")
+
+    elif args.command == "digest":
+        from buildathon_radar.digest import generate_digest_data
+        data = generate_digest_data(limit_featured=args.limit)
+        json_str = json.dumps(data, indent=2, ensure_ascii=False)
+        if args.output:
+            Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(json_str)
+            print(f"Digest exported to: {args.output}")
+        elif args.json:
+            print(json_str)
+        else:
+            print(f"\nBuildathon Radar Weekly Digest Data ({data['meta']['date_display']}):\n" + "=" * 70)
+            print(f"Featured Opportunities: {len(data['featured_hackathons'])}")
+            for f in data["featured_hackathons"]:
+                print(f" - [{f['priority']}] {f['title']} ({f['location']}) | Score: {f['score']}")
+            print(f"Upcoming Deadlines: {len(data['upcoming_deadlines'])}")
+            print(f"Blackout Conflicts Excluded: {data['blackout_calendar']['conflicts_excluded_count']}")
+            print(f"Active Blackout Periods: {len(data['blackout_calendar']['upcoming_periods'])}")
+            print("Tip: Use --json for raw JSON or --output <file.json> to export.")
 
     elif args.command == "prune":
         conn = tracker_store.connect()

@@ -4034,6 +4034,16 @@ def event_image(slug: Annotated[str, ApiPath(max_length=80, pattern=r"^[a-z0-9]+
 
 # REST JSON APIS
 # ---------------------------------------------------------------------------
+@app.get("/api/digest")
+def api_digest(limit: int = Query(5, ge=1, le=20)):
+    from buildathon_radar.digest import generate_digest_data
+    conn = _get_conn()
+    try:
+        return generate_digest_data(conn=conn, limit_featured=limit)
+    finally:
+        conn.close()
+
+
 @app.get("/api/events")
 def api_events(
     priority: Optional[str] = None,

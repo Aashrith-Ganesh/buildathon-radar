@@ -1,0 +1,141 @@
+name: Weekly Buildathon Digest
+
+on:
+  schedule:
+    # 02:30 UTC = 08:00 AM IST every Sunday
+    - cron: '30 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (validate & generate digest without sending webhook or updating persistent state)'
+        type: boolean
+        default: false
+      force_send:
+        description: 'Force send (bypass duplicate digest detection)'
+        type: boolean
+        default: false
+      mock_submission:
+        description: 'Mock webhook submission (simulate successful GAS response without network call)'
+        type: boolean
+        default: false
+      skip_discovery:
+        description: 'Skip discovery scan (use existing database events directly)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: weekly-digest
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  weekly-digest:
+    name: Run Weekly Digest Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock
+
+      - name: Restore persistent state from radar-state branch
+        id: restore-state
+        run: |
+          mkdir -p state
+          if git ls-remote --exit-code --heads origin radar-state > /dev/null 2>&1; then
+            echo "Fetching persistent state from radar-state branch..."
+            git clone --depth 1 --branch radar-state "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" state_temp
+            cp -r state_temp/* state/ 2>/dev/null || true
+            rm -rf state_temp
+            echo "State files restored:"
+            ls -la state/
+          else
+            echo "No existing radar-state branch found on remote. Starting with fresh state."
+            if [ -f "tracker.db" ]; then
+              echo "Seeding initial state from repository tracker.db..."
+              cp tracker.db state/tracker.db
+            fi
+          fi
+
+      - name: Execute Weekly Digest Pipeline
+        env:
+          GAS_WEB_APP_URL: ${{ secrets.GAS_WEB_APP_URL }}
+          GAS_WEBHOOK_SECRET: ${{ secrets.GAS_WEBHOOK_SECRET }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ "${{ inputs.force_send }}" = "true" ]; then
+            ARGS="$ARGS --force-send"
+          fi
+          if [ "${{ inputs.mock_submission }}" = "true" ]; then
+            ARGS="$ARGS --mock-webhook"
+          fi
+          if [ "${{ inputs.skip_discovery }}" = "true" ]; then
+            ARGS="$ARGS --skip-discovery"
+          fi
+
+          python scripts/run_weekly_digest.py \
+            $ARGS \
+            --state-dir state \
+            --db-path tracker.db \
+            --output-json state/latest-digest.json
+
+      - name: Commit and push updated state to radar-state branch
+        if: ${{ success() && inputs.dry_run != true }}
+        run: |
+          echo "Preparing state update for radar-state branch..."
+          STATE_DIR=$(mktemp -d)
+          if git ls-remote --exit-code --heads origin radar-state > /dev/null 2>&1; then
+            git clone --branch radar-state "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "$STATE_DIR"
+          else
+            cd "$STATE_DIR"
+            git init -b radar-state
+            git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+            cd -
+          fi
+
+          cp -f state/tracker.db "$STATE_DIR/" 2>/dev/null || true
+          cp -f state/delivery_history.json "$STATE_DIR/" 2>/dev/null || true
+          cp -f state/last_digest.json "$STATE_DIR/" 2>/dev/null || true
+          cp -f state/state_metadata.json "$STATE_DIR/" 2>/dev/null || true
+          cp -f state/latest-digest.json "$STATE_DIR/" 2>/dev/null || true
+
+          cd "$STATE_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff-index --quiet HEAD; then
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            git commit -m "chore(state): record weekly digest state [$TIMESTAMP]"
+            git push origin radar-state
+            echo "State successfully pushed to radar-state."
+          else
+            echo "No state changes detected to commit."
+          fi
+          cd -
+          rm -rf "$STATE_DIR"
+
+      - name: Upload State Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-state-${{ github.run_id }}
+          path: state/
+          retention-days: 90

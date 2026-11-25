@@ -2,7 +2,7 @@
 
 > **A student-first hackathon discovery and opportunity intelligence platform**
 
-[![Tests](https://img.shields.io/badge/tests-444%20passed-brightgreen.svg)](#testing-commands--verified-results)
+[![Tests](https://img.shields.io/badge/tests-461%20passed-brightgreen.svg)](#testing-commands--verified-results)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#installation-instructions)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](#technology-stack)
 [![Database](https://img.shields.io/badge/database-SQLite%20(WAL)-orange.svg)](#database--migrations)
@@ -32,6 +32,7 @@ High-school students passionate about technology—specifically Class 11 and 12 
 - **Personal Student Tracker:** Local loopback tracker at `/tracker` (`/api/tracker`) with seamless note-taking, status transitions (`seen`, `tracked`, `applied`, `rejected`, `over`), and audit history without requiring loopback password barriers.
 - **High-Fidelity Event Pages:** Dedicated permalink pages at `/h/{slug}` detailing comprehensive event metadata, host info, prize pools, eligibility justifications, and scoring factor breakdowns.
 - **Source Health & Diagnostics:** Detailed inspection console at `/sources` auditing adapter reachability, response latency, item yields, and data lineage without fabricated metrics.
+- **Weekly Email Digest (Serverless Push Architecture):** Fully automated weekly newsletter delivery operating independently of your local Mac. Powered by **GitHub Actions** (Sundays at 02:30 UTC / 08:00 AM IST) and **Google Apps Script** Web App (`doPost`). Features responsive email templates, duplicate prevention (SHA-256 content hashes), 5-day suppression, and persistent state across ephemeral runners via an orphan Git branch (`radar-state`).
 - **Antigravity On-Demand Intelligence Layer:** A native CLI (`antigravity_cli.py`) enabling quick terminal queries, deadline tracking, conflict analysis, and deep automated opportunity analysis.
 - **Local-First & Resilient:** SQLite database with Write-Ahead Logging (WAL) concurrency, loopback HTTP binding (`127.0.0.1:8015`), native macOS `launchd` automation, and fully mocked test isolation.
 
@@ -80,7 +81,7 @@ The application features a clean, responsive, high-contrast user interface adher
 - **Runtime Environment:** Python 3.11+ (Fully validated on Python 3.13 on macOS Sonoma/Sequoia)
 - **Automation / Scheduler:** Native macOS `launchd` LaunchAgents (`com.buildathon.radar` and `com.buildathon.tracker`)
 - **Frontend Layer:** Semantic HTML5, modern CSS custom properties (variables), native SVG icons, and vanilla JavaScript (no heavy node_modules or bloated runtime dependencies)
-- **Testing & Verification:** Pytest, AnyIO, Starlette TestClient (444 automated unit and integration tests)
+- **Testing & Verification:** Pytest, AnyIO, Starlette TestClient (461 automated unit and integration tests)
 
 ---
 
@@ -174,6 +175,10 @@ buildathon-radar/
 ├── config/                          # Application configuration
 │   ├── profile.json                 # Student preferences (The Amaatra Academy, Bengaluru)
 │   └── watchlist.json               # Curated tech companies and competition sources
+├── google-apps-script/              # Google Apps Script mailing system
+│   ├── Code.gs                      # Standalone GAS script with trigger, duplicate prevention & HTML template
+│   ├── README.md                    # Step-by-step setup, Script Properties, and troubleshooting guide
+│   └── sample-digest-response.json  # Realistic sample API response schema
 ├── docs/                            # In-depth architectural & audit documentation
 │   ├── ANTIGRAVITY-REMEDIATION-REPORT.md   # Audit remediation summary
 │   ├── ANTIGRAVITY-REMEDIATION-TRACKER.md  # Detailed audit issue tracking table
@@ -323,6 +328,26 @@ Use the provided management utility:
 ./scripts/manage_launchd.sh logs
 ```
 
+### 4. Automated Weekly Email Digest (GitHub Actions + Google Apps Script Web App)
+Buildathon Radar provides a 100% serverless, zero-maintenance weekly email digest system that runs independently of your local computer:
+
+- **Serverless Push Architecture:** Every **Sunday at 02:30 UTC (08:00 AM IST)**, a scheduled GitHub Actions workflow executes discovery, filters for student eligibility and exam blackouts, formats the weekly digest JSON, and POSTs it to a deployed Google Apps Script Web App (`doPost`).
+- **Google Apps Script Web App:** Formats the payload into an accessible, mobile-responsive HTML newsletter and delivers it via `GmailApp.sendEmail()` directly to your Gmail inbox.
+- **Cross-Runner State Persistence:** Ephemeral GitHub Actions runners restore and commit state (`tracker.db`, `delivery_history.json`, `last_digest.json`) using a dedicated orphan Git branch (`radar-state`), avoiding cache eviction limits and keeping `main` pristine.
+- **Workflow Automation:** See [`.github/workflows/weekly-digest.yml`](.github/workflows/weekly-digest.yml) and [`.github/workflows/README.md`](.github/workflows/README.md).
+- **GAS Deployment Guide:** See [`google-apps-script/DEPLOYMENT.md`](google-apps-script/DEPLOYMENT.md) and [`google-apps-script/README.md`](google-apps-script/README.md).
+- **Manual Pipeline CLI Execution:**
+  ```bash
+  # Dry-run validation (no webhook call, no state mutation)
+  python scripts/run_weekly_digest.py --dry-run --mock-webhook
+
+  # Test pipeline with mock webhook simulation
+  python scripts/run_weekly_digest.py --mock-webhook --skip-discovery
+
+  # Export digest JSON directly via main CLI
+  python main.py digest --json --output google-apps-script/sample-digest-response.json
+  ```
+
 ---
 
 ## 10. Discovery Adapters Status
@@ -408,27 +433,28 @@ venv/bin/pytest tests/
 ============================= test session starts ==============================
 platform darwin -- Python 3.13.15, pytest-9.2.0, pluggy-1.7.0
 rootdir: /Users/aashrith/Projects/buildathon-radar
-collected 444 items
+collected 461 items
 
-tests/test_agent.py .......................                              [  5%]
-tests/test_blackout_calendar_and_redesign.py ..........                  [  7%]
-tests/test_deliver.py ..............                                     [ 10%]
-tests/test_digest.py ..............................................      [ 20%]
-tests/test_feature_expansion.py .............                            [ 23%]
-tests/test_fetcher.py .................................................. [ 35%]
-.........................................................                [ 47%]
-tests/test_guard.py .........                                            [ 50%]
-tests/test_local_security.py ....                                        [ 50%]
-tests/test_main.py .......                                               [ 52%]
-tests/test_multi_platform_discovery.py ................................. [ 59%]
-....................................                                     [ 68%]
-tests/test_student_radar.py ...................                          [ 72%]
-tests/test_tracker_service.py ....................                       [ 76%]
-tests/test_tracker_store.py ..............................               [ 83%]
+tests/test_agent.py .......................                              [  4%]
+tests/test_automation_pipeline.py ...............                        [  8%]
+tests/test_blackout_calendar_and_redesign.py ..........                  [ 10%]
+tests/test_deliver.py ..............                                     [ 13%]
+tests/test_digest.py ................................................    [ 23%]
+tests/test_feature_expansion.py .............                            [ 26%]
+tests/test_fetcher.py .................................................. [ 37%]
+.........................................................                [ 49%]
+tests/test_guard.py .........                                            [ 51%]
+tests/test_local_security.py ....                                        [ 52%]
+tests/test_main.py .......                                               [ 54%]
+tests/test_multi_platform_discovery.py ................................. [ 61%]
+....................................                                     [ 69%]
+tests/test_student_radar.py ...................                          [ 73%]
+tests/test_tracker_service.py ....................                       [ 77%]
+tests/test_tracker_store.py ..............................               [ 84%]
 tests/test_triage.py .............................................       [ 93%]
 tests/test_watchlist.py ............................                     [100%]
 
-============================= 444 passed in 1.08s ==============================
+============================= 461 passed in 1.09s ==============================
 ```
 
 ### Additional Verification Commands

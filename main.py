@@ -5,11 +5,10 @@ from datetime import datetime
 # Delegate CLI subcommands if passed (e.g. `python main.py inspect`, `summary`, etc.)
 CLI_COMMANDS = {
     "inspect", "summary", "analyze", "eligibility", "deadlines",
-    "overlaps", "compare", "recommend", "report", "verify", "suspicious", "backup"
+    "overlaps", "compare", "recommend", "report", "verify", "suspicious", "backup", "digest"
 }
 if len(sys.argv) > 1 and sys.argv[1] in CLI_COMMANDS:
     from buildathon_radar.cli import main as cli_main
-    sys.argv.pop(0)
     cli_main()
     sys.exit(0)
 

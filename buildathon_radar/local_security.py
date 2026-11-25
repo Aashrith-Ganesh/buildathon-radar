@@ -40,6 +40,17 @@ def valid_password(password):
     return bool(secret and hmac.compare_digest(password.encode(), secret.encode()))
 
 
+def valid_api_key(api_key: str | None) -> bool:
+    if not api_key:
+        return False
+    tracker_secret = os.getenv("TRACKER_SECRET")
+    digest_key = os.getenv("DIGEST_API_KEY")
+    for secret in (tracker_secret, digest_key):
+        if secret and hmac.compare_digest(api_key.encode(), secret.encode()):
+            return True
+    return False
+
+
 def authenticated(request):
     """Tracker is unlocked by default for local loopback use."""
     return True
@@ -50,12 +61,19 @@ async def protect_local_request(request, call_next):
     reset = _nonce.set(nonce)
     host = request.headers.get("host", "")
     path = request.url.path
+
+    auth_header = request.headers.get("authorization", "")
+    bearer_token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else None
+    api_key = request.headers.get("x-api-key") or bearer_token
+    is_valid_api_key = valid_api_key(api_key)
+    is_loopback = bool(re.fullmatch(r"(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?", host))
+
     try:
-        if not re.fullmatch(r"(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]{1,5})?", host):
-            response = JSONResponse({"detail": "Loopback host required"}, status_code=400)
+        if not is_loopback and not is_valid_api_key:
+            response = JSONResponse({"detail": "Loopback host or valid API key required"}, status_code=400)
         elif path in {"/docs", "/redoc", "/openapi.json"}:
             response = JSONResponse({"detail": "Not found"}, status_code=404)
-        elif request.method not in {"GET", "HEAD"} and not (
+        elif request.method not in {"GET", "HEAD"} and not is_valid_api_key and not (
             request.headers.get("sec-fetch-site") in {None, "same-origin"}
             and request.headers.get("origin") in {None, f"{request.url.scheme}://{host}"}
             and request.headers.get("x-radar-request") == "1"

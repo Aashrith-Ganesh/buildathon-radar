@@ -416,3 +416,104 @@ class TestPlainTextUnaffectedByButtons:
         digest_without = build_digest([pick_no_id], [], {"Devpost": {"count": 1, "error": None}}, "note")
         assert digest_with == digest_without
         assert "radar.job-joseph.com" not in digest_with
+
+
+class TestGenerateDigestData:
+    def test_digest_data_structure(self, tmp_path):
+        db_path = str(tmp_path / "tracker_test.db")
+        conn = tracker_store.connect(db_path)
+        tracker_store.upsert_seen(conn, [
+            {
+                "event_id": "test-ev-1",
+                "title": "Bangalore AI Hack Night",
+                "url": "https://example.com/ai-night",
+                "host": "AI Innovators",
+                "source": "Luma",
+                "summary": "Hackathon in Bangalore for AI builders",
+                "location": "Koramangala, Bangalore",
+                "mode": "in-person",
+                "event_start": "2026-12-05",
+                "event_end": "2026-12-05",
+                "registration_deadline": "2026-12-04",
+                "team_size": "3-5",
+                "eligibility": "ELIGIBLE",
+                "prize": "₹50,000",
+                "score": 95,
+                "priority": "HIGH PRIORITY",
+                "why": "Bengaluru venue | Class 11/12 Eligible",
+            },
+            {
+                "event_id": "test-ev-2-conflict",
+                "title": "Conflicting Exam Day Hack",
+                "url": "https://example.com/exam-conflict",
+                "host": "Acme",
+                "location": "Online",
+                "mode": "online",
+                "event_start": "2026-11-26",
+                "event_end": "2026-11-27",
+                "blackout_conflict": 1,
+                "score": 99,
+                "priority": "CONFLICT (UNAVAILABLE)",
+            }
+        ])
+        from buildathon_radar.digest import generate_digest_data
+        data = generate_digest_data(conn=conn, limit_featured=5)
+        conn.close()
+
+        assert data["status"] == "ok"
+        assert "meta" in data
+        assert "featured_hackathons" in data
+        assert "newly_discovered" in data
+        assert "upcoming_deadlines" in data
+        assert "events_happening_soon" in data
+        assert "recommended_opportunities" in data
+        assert "important_changes" in data
+        assert "blackout_calendar" in data
+        assert "tracked_events" in data
+        assert "applied_events" in data
+
+        # Conflicted event should NOT be in featured hackathons
+        featured_ids = [e["event_id"] for e in data["featured_hackathons"]]
+        assert "test-ev-2-conflict" not in featured_ids
+        assert "test-ev-1" in featured_ids
+
+        # Check metadata fields of event
+        ev = data["featured_hackathons"][0]
+        assert ev["title"] == "Bangalore AI Hack Night"
+        assert ev["host"] == "AI Innovators"
+        assert ev["location"] == "Koramangala, Bangalore"
+        assert ev["mode"] == "in-person"
+        assert ev["event_start"] == "2026-12-05"
+        assert ev["registration_deadline"] == "2026-12-04"
+        assert ev["team_size"] == "3-5"
+        assert ev["prize"] == "₹50,000"
+        assert ev["is_bengaluru"] is True
+        assert ev["score"] == 95
+        assert ev["priority"] == "HIGH PRIORITY"
+        assert "url" in ev
+        assert "why" in ev
+        assert "track_url" in ev
+        assert "applied_url" in ev
+
+    def test_api_digest_endpoint(self, tmp_path, monkeypatch, local_client):
+        from buildathon_radar import tracker_service
+        db_path = str(tmp_path / "tracker_api.db")
+        monkeypatch.setattr(tracker_service, "DB_PATH", db_path)
+        conn = tracker_store.connect(db_path)
+        tracker_store.upsert_seen(conn, [{
+            "event_id": "api-ev-1",
+            "title": "API Test Hackathon",
+            "url": "https://example.com/api-test",
+            "location": "Bengaluru",
+            "mode": "in-person",
+            "score": 90,
+            "priority": "HIGH PRIORITY",
+        }])
+        conn.close()
+        client = local_client(tracker_service.app)
+        resp = client.get("/api/digest")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert len(data["featured_hackathons"]) >= 1
+        assert data["featured_hackathons"][0]["title"] == "API Test Hackathon"
