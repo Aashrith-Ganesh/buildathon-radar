@@ -1,6 +1,6 @@
 > Reference blueprint extracted from the signal-digest repo. Describes patterns to port, not this repo's own architecture.
 
-# Agent Pattern: Digest / Radar Blueprint
+# Architecture Pattern: Digest & Opportunity Radar Blueprint
 
 This document captures the reusable architecture behind Signal Digest so it can be
 lifted into a sibling "digest" or "radar" agent in a separate repo. It describes

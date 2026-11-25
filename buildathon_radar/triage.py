@@ -1,10 +1,10 @@
-"""Jev (TypeSafe AI) pre-filter that runs ahead of the claude-sonnet-5 call.
+"""Pre-filter triage layer that screens event listings prior to the scoring stage.
 
 This is a cost/quality pre-filter, never a correctness-critical step. Every
-failure path in here fails OPEN: if Jev is unreachable, rate limited, slow,
+failure path in here fails OPEN: if the triage service is unreachable, rate limited, slow,
 misconfigured, or returns something unexpected, the affected item is passed
-through to Claude exactly as it would have been without triage. Triage can
-only ever *reduce* what reaches Claude when it has a confident answer.
+through to the scoring engine exactly as it would have been without triage. Triage can
+only ever *reduce* what reaches scoring when it has a confident answer.
 
 Gating is deliberately narrow: only `category` gates, and only for categories
 that an existing hard rule in agent.py already rejects outright. Every other

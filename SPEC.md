@@ -7,15 +7,15 @@ systemd timer (Sun 17:00 IST)
         |
         v
 main.py --> fetcher.py --> agent.py --> guard.py --> digest.py --> deliver.py
-            Devpost API     claude-sonnet-5  URL          markdown     HTML render
+            Devpost API     scoring engine   URL          markdown     HTML render
             Devfolio API    scores + picks   validation   assembly     archive/
             normalise       as strict JSON   vs input     (code-owned) Gmail SMTP
             cache.json                       URL set
 ```
 
-Claude only selects, scores, and explains. It never authors a fact that ends
+The scoring engine selects, scores, and explains. It never authors a fact that ends
 up in the email. Every venue, date, host, and prize in the digest is rendered
-from the original fetched data, joined back to Claude's pick by URL.
+from the original fetched data, joined back to the pick by URL.
 
 ## Sources
 
@@ -198,14 +198,16 @@ published, location), `""` (dates, prize), or `[]` (themes).
 key, `event_id`, the same composite id used to key `cache.json`, so a
 guard-matched pick's item ties back to the same tracker row.
 
-## The Claude filter
+## The Optional LLM Filter
+
+When `USE_CLAUDE=true` is enabled in configuration, the pipeline supports optional external LLM evaluation alongside the primary deterministic rule engine.
 
 Model: `claude-sonnet-5`, `max_tokens=8000`, extended thinking explicitly
 disabled (`thinking={"type": "disabled"}`). See `LEARNINGS.md` for why: with
 thinking enabled, a batch of 90 events caused the model to spend its entire
 token budget on internal reasoning and return zero text output.
 
-Claude receives every fetched event as a plain-text stanza (source, title,
+The model receives every fetched event as a plain-text stanza (source, title,
 url, host, location, mode, dates, prize, themes, summary) and a system prompt
 with five blocks: persona, a hard-exclusions block, a four-component scoring
 rubric (theme fit 0 to 35, geography 0 to 30, host prestige 0 to 25, scale and

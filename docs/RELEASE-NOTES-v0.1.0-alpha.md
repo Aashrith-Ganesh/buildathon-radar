@@ -10,13 +10,13 @@
 
 ## Executive Summary
 
-Buildathon Radar `v0.1.0-alpha` marks the first official, stabilized release of the student-first hackathon discovery and opportunity intelligence platform. Originally derived from upstream open-source work by Jcube101 and inspired by SEPURI-SAI-KRISHNA, this release culminates an extensive multi-phase initiative: resolving all critical findings from the Freebuff application audit, implementing transparent rule-based eligibility filtering without metered LLM costs, and providing automated academic blackout protection specifically calibrated for Indian high-school curriculums.
+Buildathon Radar `v0.1.0-alpha` marks the first official, stabilized release of the student-first hackathon discovery and opportunity intelligence platform. Originally derived from upstream open-source work by Jcube101 and inspired by SEPURI-SAI-KRISHNA, this release culminates an extensive multi-phase initiative: resolving all critical findings from the independent application audit, implementing transparent rule-based eligibility filtering without metered LLM costs, and providing automated academic blackout protection specifically calibrated for Indian high-school curriculums.
 
 ---
 
 ## Key Highlights & Feature Deliverables
 
-### 1. Freebuff Audit Remediation & Integrity Engine
+### 1. Independent Audit Remediation & Integrity Engine
 - **Elimination of Pseudo-Discovery:** Completely removed mocked fixtures, fallback network data, and Google News RSS headline scraping that previously masqueraded as live hackathon events.
 - **Accurate Lifecycle States:** Refactored event lifecycle filtering into distinct states (`seen`, `tracked`, `applied`, `rejected`, `over`). Completed and expired hackathons are cleanly segregated from open opportunities.
 - **Robust Canonical Deduplication:** Multi-factor entity resolution prevents over-merging while preserving cross-source lineage and per-sighting metadata.

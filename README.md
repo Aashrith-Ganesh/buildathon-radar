@@ -19,7 +19,7 @@ High-school students passionate about technology—specifically Class 11 and 12 
 - **Paid Cloud & LLM Lock-In:** Typical "AI-powered" aggregators require expensive, metered third-party cloud LLM API keys (`ANTHROPIC_API_KEY`, OpenAI, etc.) just to parse and filter public event schedules.
 - **Privacy Intrusion:** Web services often require invasive registrations, track user metrics, and upload student interest data to external marketing databases.
 
-**Buildathon Radar** solves this end-to-end. Built specifically with the student profile of **The Amaatra Academy** (Bengaluru, Karnataka) in mind, it provides an automated, local-first discovery engine, transparent rule-based scoring (0–100 rubric), academic blackout protection (enforcing 46 school/exam rules across 69 unique blackout days), an interactive local web dashboard with full dark and light mode support, and an on-demand intelligence CLI for Antigravity.
+**Buildathon Radar** solves this end-to-end. Built specifically with the student profile of **The Amaatra Academy** (Bengaluru, Karnataka) in mind, it provides an automated, local-first discovery engine, transparent rule-based scoring (0–100 rubric), academic blackout protection (enforcing 46 school/exam rules across 69 unique blackout days), an interactive local web dashboard with full dark and light mode support, and an on-demand intelligence CLI for opportunity queries and analysis.
 
 ---
 
@@ -33,7 +33,7 @@ High-school students passionate about technology—specifically Class 11 and 12 
 - **High-Fidelity Event Pages:** Dedicated permalink pages at `/h/{slug}` detailing comprehensive event metadata, host info, prize pools, eligibility justifications, and scoring factor breakdowns.
 - **Source Health & Diagnostics:** Detailed inspection console at `/sources` auditing adapter reachability, response latency, item yields, and data lineage without fabricated metrics.
 - **Weekly Email Digest (Serverless Push Architecture):** Fully automated weekly newsletter delivery operating independently of your local Mac. Powered by **GitHub Actions** (Sundays at 02:30 UTC / 08:00 AM IST) and **Google Apps Script** Web App (`doPost`). Features responsive email templates, duplicate prevention (SHA-256 content hashes), 5-day suppression, and persistent state across ephemeral runners via an orphan Git branch (`radar-state`).
-- **Antigravity On-Demand Intelligence Layer:** A native CLI (`antigravity_cli.py`) enabling quick terminal queries, deadline tracking, conflict analysis, and deep automated opportunity analysis.
+- **Opportunity Intelligence Layer:** A native CLI (`radar_cli.py` / `antigravity_cli.py`) enabling quick terminal queries, deadline tracking, conflict analysis, and deep automated opportunity analysis.
 - **Local-First & Resilient:** SQLite database with Write-Ahead Logging (WAL) concurrency, loopback HTTP binding (`127.0.0.1:8015`), native macOS `launchd` automation, and fully mocked test isolation.
 
 ---
@@ -118,7 +118,7 @@ flowchart TD
     subgraph Interfaces ["5. Delivery & Surfaces"]
         WEB[FastAPI Web App: Port 8015]
         DASH[Dashboard /tracker /calendar]
-        CLI[Antigravity CLI: antigravity_cli.py]
+        CLI[Intelligence CLI: radar_cli.py]
         REP[Local Markdown Archive]
     end
 
@@ -144,14 +144,12 @@ flowchart TD
 buildathon-radar/
 ├── .env.example                     # Clean configuration template with safe defaults
 ├── .gitignore                       # Strict repository hygiene (secrets, DBs, OS files ignored)
-├── ANTIGRAVITY.md                   # Antigravity agent integration guide & tool definitions
-├── CLAUDE.md                        # Project instructions, boundaries, and verification rules
-├── CONTRIBUTING.md                  # Development guidelines and coding standards
+├── CONTRIBUTING.md                  # Development guidelines and engineering standards
 ├── LEARNINGS.md                     # Technical post-mortems and engineering insights
 ├── README.md                        # Comprehensive documentation (this document)
 ├── ROADMAP.md                       # Long-term feature roadmap and architectural plans
 ├── SPEC.md                          # Technical architecture and data contract specifications
-├── antigravity_cli.py               # Antigravity terminal CLI and reasoning query interface
+├── radar_cli.py                     # Terminal CLI and reasoning query interface
 ├── main.py                          # Discovery runner, report compiler, and digest generator
 ├── requirements.txt                 # Pinned core production dependencies
 ├── requirements.lock                # Deterministic dependency lockfile
@@ -180,10 +178,10 @@ buildathon-radar/
 │   ├── README.md                    # Step-by-step setup, Script Properties, and troubleshooting guide
 │   └── sample-digest-response.json  # Realistic sample API response schema
 ├── docs/                            # In-depth architectural & audit documentation
-│   ├── ANTIGRAVITY-REMEDIATION-REPORT.md   # Audit remediation summary
-│   ├── ANTIGRAVITY-REMEDIATION-TRACKER.md  # Detailed audit issue tracking table
+│   ├── AUDIT-AND-REMEDIATION-REPORT.md     # Consolidated engineering audit, security & remediation report
+│   ├── CLI-AND-DATABASE-REFERENCE.md       # CLI reference and SQLite schema specifications
 │   ├── FEATURE-EXPANSION-REPORT.md         # Full feature expansion report
-│   ├── FREEBUFF-*.md                       # Freebuff audit suites (QA, Security, UX)
+│   ├── PIPELINE-ARCHITECTURE-PATTERN.md    # Pipeline architecture reference pattern
 │   ├── RELEASE-NOTES-v0.1.0-alpha.md       # v0.1.0-alpha release notes
 │   ├── RELEASE-READINESS-REPORT.md         # Final release sign-off & readiness audit
 │   └── screenshots/                        # Standardized release screenshot gallery
@@ -251,7 +249,7 @@ chmod 600 .env
 | `EMAIL_ADDRESS` | `your_email@gmail.com` | Sender Gmail address (unused when `ENABLE_EMAIL=false`) |
 | `EMAIL_PASSWORD` | `your_gmail_app_password` | Gmail App Password (unused when `ENABLE_EMAIL=false`) |
 | `RECIPIENT_EMAIL`| `your_email@gmail.com` | Destination email (unused when `ENABLE_EMAIL=false`) |
-| `USE_CLAUDE` | `false` | Optional toggle for Claude LLM overrides (strictly optional; defaults to false) |
+| `USE_CLAUDE` | `false` | Optional toggle for external LLM scoring overrides (strictly optional; defaults to false) |
 | `ANTHROPIC_API_KEY` | *(blank)* | Not required. Rule engine operates completely offline |
 | `ENABLE_JEV_TRIAGE` | `false` | Optional TypeSafe Jev triage filter (disabled by default) |
 
@@ -510,7 +508,7 @@ Buildathon Radar follows a strict local-first security architecture:
 ## 17. Roadmap
 
 ### Completed in `v0.1.0-alpha`
-- [x] Comprehensive Freebuff audit remediation (elimination of fake discovery, fixed lifecycle filters).
+- [x] Comprehensive independent audit remediation (elimination of fake discovery, fixed lifecycle filters).
 - [x] Transparent rule-based 0–100 scoring engine without LLM API dependencies.
 - [x] 46-rule academic blackout calendar protecting 69 school examination days.
 - [x] Interactive monthly calendar grid with rich hover tooltips detailing exams and conflicts.
@@ -533,7 +531,7 @@ Buildathon Radar builds upon and acknowledges foundational work in the open-sour
 
 - **Original Upstream Base:** Created and originally authored by **Jcube101** ([https://github.com/Jcube101/buildathon-radar](https://github.com/Jcube101/buildathon-radar)). We extend sincere thanks for the original architecture and concept.
 - **Reference & Inspiration:** Inspired by **SEPURI-SAI-KRISHNA** ([https://github.com/SEPURI-SAI-KRISHNA/Hackathon-Radar](https://github.com/SEPURI-SAI-KRISHNA/Hackathon-Radar)).
-- **Student Edition & Remediation Work:** Independent adaptation, Freebuff audit remediation, academic blackout calendar, high-school eligibility scoring, and local tracker development developed for students at **The Amaatra Academy**, Bengaluru.
+- **Student Edition & Remediation Work:** Independent adaptation, repository audit remediation, academic blackout calendar, high-school eligibility scoring, and local tracker development developed for students at **The Amaatra Academy**, Bengaluru.
 
 ---
 

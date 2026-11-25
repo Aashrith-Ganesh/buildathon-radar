@@ -37,11 +37,11 @@ see `SPEC.md`.
       the always-send invariant on a crash.
 - [x] `main.py`: four-stage orchestration, `--dry-run` flag, top-level fatal
       handler that attempts a failure email before a non-zero exit.
-- [x] Full pytest suite, Claude client always mocked, no live calls in tests.
+- [x] Full pytest suite, external LLM client always mocked, no live calls in tests.
 - [x] `systemd` `buildathon-radar.service` and `.timer` installed via
       `systemctl --user` (no sudo), enabled, running every Sunday 17:00 IST.
 - [x] Doc set: `README.md`, `SPEC.md`, `ROADMAP.md` (this file), `LEARNINGS.md`,
-      `CLAUDE.md`, `CONTRIBUTING.md`, plus `docs/` for archived and reference
+      `CONTRIBUTING.md`, plus `docs/` for archived and reference
       material.
 - [x] Live proof-of-life email sent and confirmed on a real phone (Gmail
       Android rendering verified after the mobile-wrapping fix).

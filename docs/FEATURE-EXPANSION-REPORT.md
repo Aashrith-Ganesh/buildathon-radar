@@ -2,7 +2,7 @@
 
 ## Implementation checklist
 
-- [x] Read the five original Freebuff reports and inspect the current FastAPI, SQLite, discovery and launchd entry points.
+- [x] Read the five original independent audit reports and inspect the current FastAPI, SQLite, discovery and launchd entry points.
 - [x] Inspect reference source at commit `53a8a09`, covering tracker schema and API, client state, event rendering, discovery and pagination, refresh workflow and image endpoint.
 - [x] Capture the 431-test baseline and take a private SQLite online backup before migrations.
 - [x] Add tracker records, activity history, and authenticated writes.

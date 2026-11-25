@@ -1,51 +1,74 @@
 # CONTRIBUTING.md
 
-Conventions for working on buildathon-radar, whether by hand or through
-Claude Code.
+Engineering standards and development workflows for working on Buildathon Radar.
 
-## Documentation naming
+---
 
-All doc-set files at the repo root are UPPERCASE: `README.md`, `SPEC.md`,
-`ROADMAP.md`, `LEARNINGS.md`, `CLAUDE.md`, `CONTRIBUTING.md`. Archived or
-reference material that is not part of the active doc set lives in `docs/`.
+## 1. Documentation Structure
 
-Each file has one purpose:
+All primary project documentation files at the repository root are UPPERCASE: `README.md`, `SPEC.md`, `ROADMAP.md`, `LEARNINGS.md`, `CONTRIBUTING.md`. Archived or reference materials live under `docs/`.
 
-- **README**: public overview. What this is, how to set it up and run it.
-- **SPEC**: the tech stack, architecture, and data contracts. The
-  get-up-to-speed reference for how the system actually works today.
-- **ROADMAP**: forward-looking. Status of what shipped, and what comes next.
-- **LEARNINGS**: accumulated gotchas, incidents, and the fixes that came out
-  of them.
-- **CLAUDE**: operational guide for Claude Code sessions working in this repo.
-- **CONTRIBUTING**: this file.
+Each document serves a defined purpose:
 
-## Prose style
+- **README.md**: Public overview. What this is, setup instructions, architecture, and verification.
+- **SPEC.md**: Technical specifications, architecture, endpoints, and data contracts.
+- **ROADMAP.md**: Forward-looking tracking. Shipped milestones and planned capabilities.
+- **LEARNINGS.md**: Technical post-mortems, edge cases, and engineering rationales.
+- **CONTRIBUTING.md**: Engineering standards, workflow rules, and contributor guide (this file).
 
-No em dashes anywhere, in docs or in prose written by an assistant. Plain,
-direct writing. Short sentences over long ones with several clauses.
+---
 
-## Workflow
+## 2. Prose & Code Style
 
-Design and decisions are settled before code is written. A prompt to Claude
-Code should carry both the intent (what and why) and the guardrails (what not
-to touch, what invariants to preserve). Prefer surgical, scoped edits over
-rewrites. State explicitly what is out of scope for a given change; do not
-assume it is obvious.
+- **Clarity & Directness**: Write concise, unambiguous technical documentation.
+- **Clean Typography**: Avoid unnecessary decorative emojis in system logs, email subjects, and formal documentation.
+- **Deterministic Logic**: Prioritize explicit, testable rule engines over opaque or non-deterministic assumptions.
 
-## Commits
+---
 
-Claude Code commits and pushes verified, non-breaking work by default. It
-pauses and flags for human review before pushing anything that touches the
-send/delivery path, the systemd scheduler or timer, or secrets and `.env`.
-For this project, "breaking prod" means the scheduled Sunday email failing,
-misfiring, or double-sending, so those are the paths that get an extra pause.
-Everything else (docs, tests, the digest template, the scoring rubric) is
-safe to commit once the test suite is green and a `--dry-run` passes.
+## 3. Development Workflow
 
-## Testing
+- **Pre-Implementation Verification**: Settle design, schemas, and security boundaries before writing code.
+- **Surgical Edits**: Prefer focused, minimal, and reversible modifications. Avoid sweeping reformatting or unnecessary dependency additions.
+- **Safety Invariants**:
+  - The weekly email delivery path and Google Apps Script webhook integration must remain reliable and duplicate-proof.
+  - Never commit real secrets, API keys, or `.env` files.
+  - The local SQLite store (`tracker.db`) uses WAL mode; transactions must be committed cleanly without leaking locks.
 
-The Claude API call is mocked in every test; no test makes a live network or
-API call. `--dry-run` fetches live and calls Claude for real, but prints the
-digest instead of sending it, and neither reads nor writes `cache.json`.
-Verify both, a green test suite and a clean `--dry-run`, before committing.
+---
+
+## 4. Testing & Verification Requirements
+
+Before submitting changes, all checks must pass:
+
+```bash
+# 1. Run full automated test suite (must be 100% green with mocked network)
+venv/bin/pytest tests/
+
+# 2. Verify clean packaging dependencies
+venv/bin/pip check
+
+# 3. Check for trailing whitespace and syntax errors
+git diff --check
+
+# 4. Dry-run pipeline validation (no state mutation, no webhook dispatch)
+python scripts/run_weekly_digest.py --dry-run --mock-webhook
+```
+
+---
+
+## 5. Useful Operational Commands
+
+```bash
+# Start local development dashboard
+venv/bin/uvicorn buildathon_radar.tracker_service:app --host 127.0.0.1 --port 8015
+
+# Run a local discovery scan
+venv/bin/python main.py --dry-run
+
+# Run discovery without discovery scraping (using existing database)
+python scripts/run_weekly_digest.py --mock-webhook --skip-discovery
+
+# Execute database opportunity inspection CLI
+venv/bin/python radar_cli.py summary
+```

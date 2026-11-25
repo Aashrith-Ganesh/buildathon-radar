@@ -20,10 +20,10 @@ def make_item(url, title="Source Title", **overrides):
     return item
 
 
-def make_pick(item, tier="must_see", score=80, why="matters", claude_title="Claude's Guess"):
+def make_pick(item, tier="must_see", score=80, why="matters", model_title="Model's Guess"):
     return {
         "url": item["url"],
-        "title": claude_title,
+        "title": model_title,
         "tier": tier,
         "score": score,
         "scoring": {},
@@ -33,12 +33,12 @@ def make_pick(item, tier="must_see", score=80, why="matters", claude_title="Clau
 
 
 class TestCardFactsFromSourceItem:
-    def test_title_comes_from_source_item_not_claude(self):
+    def test_title_comes_from_source_item_not_model(self):
         item = make_item("https://a.com/1", title="Real Devpost Title")
-        pick = make_pick(item, claude_title="Something Claude Made Up")
+        pick = make_pick(item, model_title="Something Model Made Up")
         digest = build_digest([pick], [], {"Devpost": {"count": 1, "error": None}}, "note")
         assert "Real Devpost Title" in digest
-        assert "Something Claude Made Up" not in digest
+        assert "Something Model Made Up" not in digest
 
     def test_host_location_dates_prize_from_item(self):
         item = make_item("https://a.com/1", host="IEEE", location="Bengaluru, India", dates="Jul 18, 2026", prize="Overall Prize")
@@ -204,12 +204,12 @@ class TestHtmlDigestTealTheme:
 
 
 class TestHtmlDigestCardStructure:
-    def test_card_facts_from_source_item_not_claude(self):
+    def test_card_facts_from_source_item_not_model(self):
         item = make_item("https://a.com/1", title="Real Devpost Title")
-        pick = make_pick(item, claude_title="Something Claude Made Up")
+        pick = make_pick(item, model_title="Something Model Made Up")
         html = build_html_digest([pick], [], {"Devpost": {"count": 1, "error": None}}, "")
         assert "Real Devpost Title" in html
-        assert "Something Claude Made Up" not in html
+        assert "Something Model Made Up" not in html
 
     def test_score_badge_and_source_present(self):
         item = make_item("https://a.com/1")

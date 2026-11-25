@@ -1,4 +1,4 @@
-"""Command Line Interface for Buildathon Radar & Antigravity Analysis.
+"""Command Line Interface for Buildathon Radar Opportunity Analysis.
 """
 
 import argparse
@@ -9,12 +9,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from buildathon_radar import antigravity, tracker_store
+from buildathon_radar import analysis, tracker_store
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Buildathon Radar CLI & Antigravity Intelligence Interface"
+        description="Buildathon Radar CLI & Opportunity Intelligence Interface"
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
@@ -84,7 +84,7 @@ def main():
         sys.exit(0)
 
     if args.command == "inspect":
-        events = antigravity.inspect_database(
+        events = analysis.inspect_database(
             priority=args.priority,
             state=args.state,
             eligibility=args.eligibility,
@@ -108,7 +108,7 @@ def main():
                 print("-" * 70)
 
     elif args.command == "summary":
-        s = antigravity.get_database_summary()
+        s = analysis.get_database_summary()
         print("\nDatabase Summary:\n" + "=" * 50)
         print(f"Total Events: {s['total_events']}")
         print("\nBy Priority:")
@@ -125,21 +125,21 @@ def main():
             print(f"  {k}: {v}")
 
     elif args.command == "analyze":
-        res = antigravity.analyze_event(args.event_id)
+        res = analysis.analyze_event(args.event_id)
         if getattr(args, "json", False):
             print(json.dumps(res, indent=2))
         else:
             if "error" in res:
                 print(f"Error: {res['error']}")
             else:
-                print(antigravity.explain_event_value(args.event_id))
+                print(analysis.explain_event_value(args.event_id))
 
     elif args.command == "eligibility":
-        res = antigravity.evaluate_eligibility_for_class_11(args.event_id)
+        res = analysis.evaluate_eligibility_for_class_11(args.event_id)
         print(json.dumps(res, indent=2))
 
     elif args.command == "deadlines":
-        deadlines = antigravity.get_deadlines(limit=args.limit)
+        deadlines = analysis.get_deadlines(limit=args.limit)
         print("\nUpcoming Registration Deadlines:\n" + "=" * 70)
         for d in deadlines:
             days = f"({d['days_remaining']} days left)" if d["days_remaining"] is not None else ""
@@ -149,7 +149,7 @@ def main():
             print("-" * 70)
 
     elif args.command == "overlaps":
-        overlaps = antigravity.detect_overlapping_dates()
+        overlaps = analysis.detect_overlapping_dates()
         print("\nOverlapping Event Dates:\n" + "=" * 70)
         if not overlaps:
             print("No date conflicts found between high-priority events.")
@@ -160,11 +160,11 @@ def main():
             print("-" * 70)
 
     elif args.command == "compare":
-        res = antigravity.compare_events(args.event_ids)
+        res = analysis.compare_events(args.event_ids)
         print(json.dumps(res, indent=2))
 
     elif args.command == "recommend":
-        recs = antigravity.recommend_events(limit=args.limit)
+        recs = analysis.recommend_events(limit=args.limit)
         print(f"\nTop {len(recs)} Recommended Events for Class 11/12 Student:\n" + "=" * 70)
         for r in recs:
             print(f"[{r['priority']}] Score: {r['score']} | {r['title']}")
@@ -175,14 +175,14 @@ def main():
             print("-" * 70)
 
     elif args.command == "report":
-        rep = antigravity.generate_opportunity_report(output_path=args.output)
+        rep = analysis.generate_opportunity_report(output_path=args.output)
         if args.output:
             print(f"Report written to: {args.output}")
         else:
             print(rep)
 
     elif args.command in ("verify", "suspicious"):
-        susp = antigravity.detect_suspicious_or_incomplete()
+        susp = analysis.detect_suspicious_or_incomplete()
         print(f"\nFlagged / Incomplete Listings ({len(susp)}):\n" + "=" * 70)
         for s in susp:
             print(f"Event: {s['title']} ({s['source']})")

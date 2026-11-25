@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Buildathon Radar - Antigravity Intelligence & Database Query CLI."""
+"""Buildathon Radar - Opportunity Intelligence & Database Query CLI."""
 
 from buildathon_radar.cli import main
 

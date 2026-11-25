@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 import pytest
 
-from buildathon_radar import antigravity, deliver, rule_engine, tracker_service, tracker_store
+from buildathon_radar import analysis, deliver, rule_engine, tracker_service, tracker_store
 
 
 @pytest.fixture
@@ -282,12 +282,12 @@ class TestAntigravityIntelligence:
         tracker_store.upsert_events(conn, items, evals)
         conn.close()
 
-        summary = antigravity.get_database_summary(temp_db)
+        summary = analysis.get_database_summary(temp_db)
         assert summary["total_events"] == 2
         assert summary["by_priority"]["HIGH PRIORITY"] == 1
         assert summary["by_priority"]["MEDIUM PRIORITY"] == 1
 
-        high_events = antigravity.inspect_database(temp_db, priority="HIGH PRIORITY")
+        high_events = analysis.inspect_database(temp_db, priority="HIGH PRIORITY")
         assert len(high_events) == 1
         assert high_events[0]["event_id"] == "e1"
 
@@ -310,11 +310,11 @@ class TestAntigravityIntelligence:
         tracker_store.upsert_events(conn, items, evals)
         conn.close()
 
-        analysis = antigravity.analyze_event("e-bengaluru", temp_db)
-        assert analysis["priority"] == "HIGH PRIORITY"
-        assert analysis["logistics"]["is_local_bengaluru"] is True
+        res = analysis.analyze_event("e-bengaluru", temp_db)
+        assert res["priority"] == "HIGH PRIORITY"
+        assert res["logistics"]["is_local_bengaluru"] is True
 
-        elig = antigravity.evaluate_eligibility_for_class_11("e-bengaluru", temp_db)
+        elig = analysis.evaluate_eligibility_for_class_11("e-bengaluru", temp_db)
         assert elig["verdict"] == "ELIGIBLE"
         assert "Class 11" in elig["student_grade"]
 
@@ -331,7 +331,7 @@ class TestAntigravityIntelligence:
         }], {"e-rep": {"priority": "HIGH PRIORITY", "score": 92, "eligibility": "ELIGIBLE", "why": "Super event."}})
         conn.close()
 
-        report_md = antigravity.generate_opportunity_report(temp_db)
+        report_md = analysis.generate_opportunity_report(temp_db)
         assert "# 🛰️ Buildathon Radar Opportunity Report" in report_md
         assert "Report Test Event" in report_md
         assert "Super event." in report_md

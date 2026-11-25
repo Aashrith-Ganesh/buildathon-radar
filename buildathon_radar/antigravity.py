@@ -1,6 +1,6 @@
-"""Antigravity Integration Layer for Buildathon Radar.
+"""Opportunity Analysis and Query Layer for Buildathon Radar.
 
-Provides a read-only query and reasoning interface for Antigravity (or local CLI)
+Provides a read-only query and reasoning interface for local CLI and scripts
 to inspect the SQLite event database, analyze opportunities, evaluate Class 11/12 eligibility,
 compare events, detect date conflicts, and generate personalized reports on demand.
 
