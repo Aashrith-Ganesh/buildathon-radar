@@ -1,13 +1,13 @@
 {
-  "last_updated": "2026-11-25T18:49:31.967424+05:30",
-  "database_size": 348160,
+  "last_updated": "2026-11-25T18:55:22.158614+05:30",
+  "database_size": 368640,
   "last_delivery": {
-    "delivery_id": "radar-20261125-184924-9fcfebed",
+    "delivery_id": "radar-20261125-185515-9fcfebed",
     "content_hash": "9fcfebed04a4f2b5f832c038f6f663796410a94d6226d2ad8518cab273438ee9",
     "status": "success",
     "recipient": "aashrithganesh.yammanoori@gmail.com",
     "featured_count": 5,
-    "sent_at": "2026-11-25T18:49:31.966943+05:30",
+    "sent_at": "2026-11-25T18:55:22.158232+05:30",
     "meta": {
       "title": "Buildathon Radar Weekly Digest",
       "edition": "Student Edition (Class 11/12 · Bengaluru)",
@@ -36,12 +36,12 @@
     },
     "response": {
       "status": "success",
-      "delivery_id": "radar-20261125-184924-9fcfebed",
+      "delivery_id": "radar-20261125-185515-9fcfebed",
       "dispatched": true,
       "recipient": "aashrithganesh.yammanoori@gmail.com",
       "featured_count": 5,
-      "duration_seconds": "0.94",
-      "timestamp": "2026-11-25T13:19:31.250Z"
+      "duration_seconds": "0.72",
+      "timestamp": "2026-11-25T13:25:21.540Z"
     }
   }
 }
