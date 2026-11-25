@@ -40,36 +40,43 @@ High-school students passionate about technology—specifically Class 11 and 12 
 
 ## 3. Screenshots
 
-The application features a clean, responsive, high-contrast user interface adhering to modern desktop and mobile design standards.
+The application features a clean, responsive, high-contrast user interface adhering to modern desktop and mobile design standards, with full native support for both dark and light themes across all views.
 
-### Dashboard (Dark Mode)
-![Dashboard Dark Mode](docs/screenshots/dashboard-dark.png)
-*High-contrast dark mode dashboard displaying curated hackathon opportunities, priority badges, and quick filter metrics.*
-
-### Dashboard (Light Mode)
-![Dashboard Light Mode](docs/screenshots/dashboard-light.png)
-*Accessible light mode ensuring readable typography and high color contrast.*
+### Main Dashboard
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Dashboard Dark Mode](docs/screenshots/dashboard-dark.png) | ![Dashboard Light Mode](docs/screenshots/dashboard-light.png) |
+*Curated opportunity feed with priority badges, local spotlight indicators, and quick filter metrics.*
 
 ### Academic Blackout Calendar (Monthly Grid)
-![Academic Blackout Calendar](docs/screenshots/calendar-month-grid.png)
-*Interactive calendar displaying academic examination blackout periods with hover tooltips detailing dates, school rules, and conflicts.*
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Academic Blackout Calendar Dark](docs/screenshots/calendar-month-grid.png) | ![Academic Blackout Calendar Light](docs/screenshots/calendar-month-grid-light.png) |
+*Interactive monthly calendar displaying examination blackout periods with hover tooltips detailing dates, school rules, and conflicts.*
 
 ### Personal Student Tracker
-![Personal Student Tracker](docs/screenshots/tracker.png)
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Personal Student Tracker Dark](docs/screenshots/tracker.png) | ![Personal Student Tracker Light](docs/screenshots/tracker-light.png) |
 *Integrated personal tracking board for monitoring applied competitions, interview stages, and personal notes.*
 
 ### Event Detail & Scoring Breakdown
-![Event Detail Page](docs/screenshots/event-detail.png)
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Event Detail Page Dark](docs/screenshots/event-detail.png) | ![Event Detail Page Light](docs/screenshots/event-detail-light.png) |
 *Rich event detail view (`/h/{slug}`) showing eligibility criteria, prize distributions, and factor-by-factor score explanations.*
 
-### Mobile Responsive Views
-| Mobile Dashboard | Mobile Event Detail |
-| :---: | :---: |
-| ![Dashboard Mobile](docs/screenshots/dashboard-mobile.png) | ![Event Mobile](docs/screenshots/event-mobile.png) |
-
 ### Discovery Sources & Health Diagnostics
-![Discovery Sources](docs/screenshots/sources.png)
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Discovery Sources Dark](docs/screenshots/sources.png) | ![Discovery Sources Light](docs/screenshots/sources-light.png) |
 *Real-time diagnostics page (`/sources`) providing transparent adapter status, yield telemetry, and lineage.*
+
+### Mobile Responsive Views
+| Dark Mode Mobile | Light Mode Mobile |
+| :---: | :---: |
+| ![Dashboard Mobile Dark](docs/screenshots/dashboard-mobile.png) | ![Dashboard Mobile Light](docs/screenshots/dashboard-mobile-light.png) |
+*Fully responsive layouts optimized down to 320px/390px mobile viewports.*
 
 ---
 

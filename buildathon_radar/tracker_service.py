@@ -164,7 +164,7 @@ p {{ font-size:14px; color:var(--text-muted); line-height:1.6; margin:8px 0; }}
 .back-link {{ display:inline-block; margin-top:16px; color:var(--accent); font-size:13px; text-decoration:none; font-weight:600; }}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
+const savedTheme = new URLSearchParams(window.location.search).get('theme') || localStorage.getItem('radar_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 document.documentElement.setAttribute('data-theme', savedTheme);
 </script>
 </head>
@@ -740,14 +740,20 @@ const root = document.documentElement;
 const themeButton = document.getElementById('themeToggleBtn');
 function applyTheme(theme) {
   root.dataset.theme = theme;
-  themeButton.textContent = theme === 'light' ? 'Dark theme' : 'Light theme';
+  if (themeButton) {
+    themeButton.textContent = theme === 'light' ? 'Dark theme' : 'Light theme';
+  }
 }
-applyTheme(localStorage.getItem('radar_theme') === 'light' ? 'light' : 'dark');
-themeButton.addEventListener('click', () => {
-  const theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-  localStorage.setItem('radar_theme', theme);
-  applyTheme(theme);
-});
+const urlTheme = new URLSearchParams(window.location.search).get('theme');
+const activeTheme = urlTheme || localStorage.getItem('radar_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+applyTheme(activeTheme);
+if (themeButton) {
+  themeButton.addEventListener('click', () => {
+    const theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('radar_theme', theme);
+    applyTheme(theme);
+  });
+}
 </script>"""
 
 
@@ -2316,7 +2322,7 @@ input:checked + .slider:before { transform: translateX(16px); }
 
 
 _CALENDAR_JS = """
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
+const savedTheme = new URLSearchParams(window.location.search).get('theme') || localStorage.getItem('radar_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 let calYear = 2026;
@@ -3216,7 +3222,7 @@ input:checked + .slider:before {{ transform: translateX(16px); }}
 .row-disabled {{ opacity: 0.45; }}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
+const savedTheme = new URLSearchParams(window.location.search).get('theme') || localStorage.getItem('radar_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 
@@ -3467,7 +3473,7 @@ def _event_detail_page(row, canonical, tracker_entry=None, show_notes=True):
 }}
 </style>
 <script>
-const savedTheme = localStorage.getItem('radar_theme') || 'dark';
+const savedTheme = new URLSearchParams(window.location.search).get('theme') || localStorage.getItem('radar_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 document.documentElement.setAttribute('data-theme', savedTheme);
 </script>
 </head>
