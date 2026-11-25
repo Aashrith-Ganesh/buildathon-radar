@@ -73,10 +73,18 @@ The application features a clean, responsive, high-contrast user interface adher
 *Real-time diagnostics page (`/sources`) providing transparent adapter status, yield telemetry, and lineage.*
 
 ### Mobile Responsive Views
-| Dark Mode Mobile | Light Mode Mobile |
+
+#### Mobile Dashboard (390px)
+| Dark Mode | Light Mode |
 | :---: | :---: |
 | ![Dashboard Mobile Dark](docs/screenshots/dashboard-mobile.png) | ![Dashboard Mobile Light](docs/screenshots/dashboard-mobile-light.png) |
-*Fully responsive layouts optimized down to 320px/390px mobile viewports.*
+*Compact opportunity feed layout optimized for mobile viewports.*
+
+#### Mobile Event Detail (390px)
+| Dark Mode | Light Mode |
+| :---: | :---: |
+| ![Event Mobile Dark](docs/screenshots/event-mobile.png) | ![Event Mobile Light](docs/screenshots/event-mobile-light.png) |
+*Full event overview, eligibility criteria, and quick tracking actions on mobile.*
 
 ---
 
