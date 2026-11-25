@@ -41,5 +41,48 @@
       "duration_seconds": "0.72",
       "timestamp": "2026-11-25T08:41:37.141Z"
     }
+  },
+  {
+    "delivery_id": "radar-20261125-142833-9fcfebed",
+    "content_hash": "9fcfebed04a4f2b5f832c038f6f663796410a94d6226d2ad8518cab273438ee9",
+    "status": "success",
+    "recipient": "aashrithganesh.yammanoori@gmail.com",
+    "featured_count": 5,
+    "sent_at": "2026-11-25T14:28:49.231503+05:30",
+    "meta": {
+      "title": "Buildathon Radar Weekly Digest",
+      "edition": "Student Edition (Class 11/12 · Bengaluru)",
+      "date_display": "November 25, 2026",
+      "date_range": "Nov 19 - 25, 2026",
+      "recipient_profile": {
+        "name": "Indian High School Student (Class 11/12)",
+        "school": "The Amaatra Academy",
+        "grade": "Class 11 / Class 12",
+        "target_city": "Bengaluru",
+        "format_preference": "In-person & Hybrid preferred",
+        "team_size_preference": "3-5 members",
+        "blackout_calendar_active": true
+      },
+      "intro": "Curated for Indian High School Student (Class 11/12) in Bengaluru. Strictly prioritized in-person/hybrid events and verified exam blackout date availability.",
+      "summary_stats": {
+        "total_active_events": 58,
+        "featured_count": 5,
+        "newly_discovered_count": 5,
+        "upcoming_deadlines_count": 6,
+        "events_happening_soon_count": 0,
+        "tracked_events_count": 0,
+        "applied_events_count": 0,
+        "blackout_conflicts_excluded": 24
+      }
+    },
+    "response": {
+      "status": "success",
+      "delivery_id": "radar-20261125-142833-9fcfebed",
+      "dispatched": true,
+      "recipient": "aashrithganesh.yammanoori@gmail.com",
+      "featured_count": 5,
+      "duration_seconds": "0.76",
+      "timestamp": "2026-11-25T08:58:48.567Z"
+    }
   }
 ]
