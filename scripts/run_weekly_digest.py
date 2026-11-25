@@ -61,15 +61,15 @@ def write_github_step_summary(
     deadlines = digest_data.get("upcoming_deadlines", [])
     blackout = digest_data.get("blackout_calendar", {})
 
-    status_badge = "🟡 DRY-RUN" if dry_run else ("🟢 DELIVERED" if delivery_result.get("status") == "success" else f"⚪ {delivery_result.get('status', 'UNKNOWN').upper()}")
+    status_badge = "[DRY-RUN]" if dry_run else ("[DELIVERED]" if delivery_result.get("status") == "success" else f"[{delivery_result.get('status', 'UNKNOWN').upper()}]")
 
     lines = [
-        f"## 🛰️ Buildathon Radar Weekly Digest — {status_badge}",
+        f"## Buildathon Radar Weekly Digest — {status_badge}",
         f"**Date:** {meta.get('date_display', 'N/A')} ({meta.get('date_range', '')})",
         f"**Delivery ID:** `{delivery_result.get('delivery_id', 'N/A')}`",
         f"**Recipient:** `{delivery_result.get('recipient', os.getenv('RECIPIENT_EMAIL', 'Default'))}`",
         "",
-        "### 📊 Execution Statistics",
+        "### Execution Statistics",
         f"- **Featured Opportunities:** {len(featured)}",
         f"- **Upcoming Deadlines:** {len(deadlines)}",
         f"- **Blackout Conflicts Safely Avoided:** {blackout.get('conflicts_excluded_count', 0)}",
@@ -84,7 +84,7 @@ def write_github_step_summary(
 
     lines.extend([
         "",
-        "### 🔥 Featured Hackathons",
+        "### Featured Opportunities",
         "| Score | Title | Mode & Location | Dates | Eligibility |",
         "| :---: | :--- | :--- | :--- | :--- |",
     ])
@@ -100,7 +100,7 @@ def write_github_step_summary(
     if blackout.get("upcoming_periods"):
         lines.extend([
             "",
-            "### 🛡️ Active Exam Blackout Periods",
+            "### Active Exam Blackout Periods",
         ])
         for bp in blackout.get("upcoming_periods", []):
             lines.append(f"- **{bp.get('dates_display')}:** {bp.get('title')} ({bp.get('reason', '')})")

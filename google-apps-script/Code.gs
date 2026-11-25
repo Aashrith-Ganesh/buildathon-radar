@@ -130,7 +130,7 @@ function doPost(e) {
     // 6. Render Email Formats
     var meta = payload.meta || {};
     var featured = payload.featured_hackathons || [];
-    var subject = '🛰️ Buildathon Radar | ' + (meta.date_display || 'Weekly Digest') + ' | ' + featured.length + ' Featured Events';
+    var subject = 'Buildathon Radar | ' + (meta.date_display || 'Weekly Digest') + ' | ' + featured.length + ' Featured Events';
 
     var htmlBody = renderDigestHtml(payload);
     var textBody = renderDigestPlainText(payload);
@@ -363,7 +363,7 @@ function renderDigestHtml(data) {
       var daysBadge = '';
       if (typeof ev.days_until_deadline === 'number') {
         if (ev.days_until_deadline >= 0) {
-          daysBadge = ' &middot; <span style="color:' + (ev.days_until_deadline <= 3 ? cRed : cAmber) + '; font-weight:600;">⏰ ' + ev.days_until_deadline + 'd left</span>';
+          daysBadge = ' &middot; <span style="color:' + (ev.days_until_deadline <= 3 ? cRed : cAmber) + '; font-weight:600;">' + ev.days_until_deadline + 'd left</span>';
         }
       }
 
@@ -372,7 +372,7 @@ function renderDigestHtml(data) {
         prizeRow = 
           '<tr>' +
           '  <td style="padding:4px 0 0 0; font-size:13px; color:' + cTextPrimary + ';">' +
-          '    <strong style="color:' + cTealDark + ';">🏆 Prize Pool:</strong> ' + prize +
+          '    <strong style="color:' + cTealDark + ';">Prize Pool:</strong> ' + prize +
           '  </td>' +
           '</tr>';
       }
@@ -387,10 +387,10 @@ function renderDigestHtml(data) {
         '          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' +
         '            <tr>' +
         '              <td>' +
-        '                <span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; background-color:' + modeBadgeBg + '; color:' + modeBadgeColor + '; text-transform:uppercase; margin-right:6px;">' + mode + '</span>' +
-        '                <span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; background-color:' + cTealLight + '; color:' + cTealDark + '; margin-right:6px;">⭐ Score ' + score + '</span>' +
-        (ev.is_bengaluru ? '<span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; background-color:#fef3c7; color:#92400e; margin-right:6px;">📍 Bengaluru Local</span>' : '') +
-        (ev.is_free_weekend ? '<span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; background-color:#e0f2fe; color:#0369a1;">🎉 Free & Weekend</span>' : '') +
+        '                <span style="display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; line-height:1; background-color:' + modeBadgeBg + '; color:' + modeBadgeColor + '; text-transform:uppercase; margin-right:6px;">' + mode + '</span>' +
+        '                <span style="display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; line-height:1; background-color:' + cTealLight + '; color:' + cTealDark + '; margin-right:6px;">Score ' + score + '</span>' +
+        (ev.is_bengaluru ? '<span style="display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; line-height:1; background-color:#fef3c7; color:#92400e; margin-right:6px;">Bengaluru Local</span>' : '') +
+        (ev.is_free_weekend ? '<span style="display:inline-block; padding:4px 9px; border-radius:4px; font-size:11px; font-weight:700; line-height:1; background-color:#e0f2fe; color:#0369a1;">Free &amp; Weekend</span>' : '') +
         '              </td>' +
         '            </tr>' +
         '          </table>' +
@@ -398,37 +398,37 @@ function renderDigestHtml(data) {
         '            <a href="' + url + '" target="_blank" style="color:' + cNavBg + '; text-decoration:none;">' + title + '</a>' +
         '          </div>' +
         '          <div style="margin-top:4px; font-size:13px; color:' + cTextMuted + ';">' +
-        '            <strong>' + host + '</strong> &middot; 📍 ' + location +
+        '            <strong>' + host + '</strong> &middot; ' + location +
         '          </div>' +
         '          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px; font-size:13px; border-collapse:collapse;">' +
         '            <tr>' +
-        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">📅 Event Dates:</strong> ' + dates + '</td>' +
+        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">Event Dates:</strong> ' + dates + '</td>' +
         '            </tr>' +
         '            <tr>' +
-        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">⏳ Deadline:</strong> ' + deadline + daysBadge + '</td>' +
+        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">Deadline:</strong> ' + deadline + daysBadge + '</td>' +
         '            </tr>' +
         '            <tr>' +
-        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">🎓 Eligibility:</strong> ' + eligibility + ' &middot; <strong>👥 Team:</strong> ' + teamSize + '</td>' +
+        '              <td style="padding:3px 0; color:' + cTextPrimary + ';"><strong style="color:#334155;">Eligibility:</strong> ' + eligibility + ' &middot; <strong>Team:</strong> ' + teamSize + '</td>' +
         '            </tr>' +
         prizeRow +
         '          </table>' +
         (summary ? '<div style="margin-top:12px; font-size:13px; line-height:1.5; color:#334155;">' + summary + '</div>' : '') +
         (why ? 
           '<div style="margin-top:12px; padding:10px 14px; background-color:#f8fafc; border-left:3px solid ' + cTeal + '; border-radius:4px; font-size:12px; color:#1e293b; line-height:1.4;">' +
-          '  <strong>🎯 Why it matches your preferences:</strong> ' + why +
+          '  <strong>Why it matches your preferences:</strong> ' + why +
           '</div>' : '') +
         '          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:16px;">' +
         '            <tr>' +
         '              <td style="background-color:' + cTeal + '; border-radius:6px;">' +
-        '                <a href="' + url + '" target="_blank" style="display:inline-block; padding:8px 16px; font-family:' + fontStack + '; font-size:13px; font-weight:700; color:#ffffff; text-decoration:none;">🚀 Official Link &rarr;</a>' +
+        '                <a href="' + url + '" target="_blank" style="display:inline-block; padding:8px 16px; font-family:' + fontStack + '; font-size:13px; font-weight:700; color:#ffffff; text-decoration:none;">Official Link &rarr;</a>' +
         '              </td>' +
         '              <td width="10"></td>' +
         '              <td style="background-color:#f1f5f9; border-radius:6px; border:1px solid ' + cBorder + ';">' +
-        '                <a href="' + trackUrl + '" target="_blank" style="display:inline-block; padding:7px 14px; font-family:' + fontStack + '; font-size:12px; font-weight:600; color:' + cTextPrimary + '; text-decoration:none;">📌 Track</a>' +
+        '                <a href="' + trackUrl + '" target="_blank" style="display:inline-block; padding:7px 14px; font-family:' + fontStack + '; font-size:12px; font-weight:600; color:' + cTextPrimary + '; text-decoration:none;">Track</a>' +
         '              </td>' +
         '              <td width="10"></td>' +
         '              <td style="background-color:' + cTealLight + '; border-radius:6px; border:1px solid ' + cTeal + ';">' +
-        '                <a href="' + appliedUrl + '" target="_blank" style="display:inline-block; padding:7px 14px; font-family:' + fontStack + '; font-size:12px; font-weight:600; color:' + cTealDark + '; text-decoration:none;">🎯 Applied</a>' +
+        '                <a href="' + appliedUrl + '" target="_blank" style="display:inline-block; padding:7px 14px; font-family:' + fontStack + '; font-size:12px; font-weight:600; color:' + cTealDark + '; text-decoration:none;">Applied</a>' +
         '              </td>' +
         '            </tr>' +
         '          </table>' +
@@ -456,7 +456,7 @@ function renderDigestHtml(data) {
         '</tr>';
     }
     newlyDiscoveredHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">🆕 Newly Discovered Opportunities</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Newly Discovered Opportunities</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px; overflow:hidden;">' +
       itemsList +
@@ -482,7 +482,7 @@ function renderDigestHtml(data) {
         '</tr>';
     }
     deadlinesHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">⏰ Upcoming Registration Deadlines</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Upcoming Registration Deadlines</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px; overflow:hidden;">' +
       '    <tr style="background-color:#f1f5f9; font-size:11px; text-transform:uppercase; color:' + cTextMuted + '; font-weight:700;">' +
@@ -505,13 +505,13 @@ function renderDigestHtml(data) {
         '<tr style="border-bottom:1px solid ' + cBorder + ';">' +
         '  <td style="padding:10px 14px; font-size:13px;">' +
         '    <a href="' + escapeHtml(sItem.url) + '" target="_blank" style="color:' + cNavBg + '; font-weight:600; text-decoration:none;">' + escapeHtml(sItem.title) + '</a>' +
-        '    <div style="font-size:12px; color:' + cTextMuted + ';">📍 ' + escapeHtml(sItem.location) + '</div>' +
+        '    <div style="font-size:12px; color:' + cTextMuted + ';">' + escapeHtml(sItem.location) + '</div>' +
         '  </td>' +
         '  <td style="padding:10px 14px; font-size:12px; color:' + cTealDark + '; font-weight:600; text-align:right; white-space:nowrap;">' + escapeHtml(sItem.dates_display) + '</td>' +
         '</tr>';
     }
     happeningSoonHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">🚀 Events Happening Soon (Next 21 Days)</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Events Happening Soon (Next 21 Days)</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px; overflow:hidden;">' +
       soonRows +
@@ -535,7 +535,7 @@ function renderDigestHtml(data) {
         '</tr>';
     }
     recommendedHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">🎯 Recommended Opportunities (Bengaluru & Student Picks)</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Recommended Opportunities (Bengaluru &amp; Student Picks)</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px; overflow:hidden;">' +
       recRows +
@@ -551,7 +551,7 @@ function renderDigestHtml(data) {
     blackoutList += '<li style="margin-bottom:4px;"><strong>' + escapeHtml(bp.dates_display) + ':</strong> ' + escapeHtml(bp.title) + (bp.reason ? ' (' + escapeHtml(bp.reason) + ')' : '') + '</li>';
   }
   var blackoutHtml = 
-    '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">🛡️ Active Exam & Test Blackout Calendar</td></tr>' +
+    '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Active Exam &amp; Test Blackout Calendar</td></tr>' +
     '<tr><td>' +
     '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cAmberLight + '; border:1px solid #fcd34d; border-radius:8px; padding:14px;">' +
     '    <tr><td>' +
@@ -569,14 +569,14 @@ function renderDigestHtml(data) {
     var tRows = '';
     for (var t = 0; t < trackedEvents.length; t++) {
       var te = trackedEvents[t];
-      tRows += '<tr><td style="padding:6px 12px; font-size:13px;"><a href="' + escapeHtml(te.url) + '" style="color:' + cNavBg + '; text-decoration:none;">📌 ' + escapeHtml(te.title) + '</a></td><td align="right" style="padding:6px 12px; font-size:12px; color:' + cTextMuted + ';">' + escapeHtml(te.start_display) + '</td></tr>';
+      tRows += '<tr><td style="padding:6px 12px; font-size:13px;"><a href="' + escapeHtml(te.url) + '" style="color:' + cNavBg + '; text-decoration:none;">[Tracked] ' + escapeHtml(te.title) + '</a></td><td align="right" style="padding:6px 12px; font-size:12px; color:' + cTextMuted + ';">' + escapeHtml(te.start_display) + '</td></tr>';
     }
     for (var a = 0; a < appliedEvents.length; a++) {
       var ae = appliedEvents[a];
-      tRows += '<tr><td style="padding:6px 12px; font-size:13px;"><a href="' + escapeHtml(ae.url) + '" style="color:' + cTealDark + '; font-weight:600; text-decoration:none;">🎯 ' + escapeHtml(ae.title) + '</a></td><td align="right" style="padding:6px 12px; font-size:12px; color:' + cTextMuted + ';">' + escapeHtml(ae.start_display) + '</td></tr>';
+      tRows += '<tr><td style="padding:6px 12px; font-size:13px;"><a href="' + escapeHtml(ae.url) + '" style="color:' + cTealDark + '; font-weight:600; text-decoration:none;">[Applied] ' + escapeHtml(ae.title) + '</a></td><td align="right" style="padding:6px 12px; font-size:12px; color:' + cTextMuted + ';">' + escapeHtml(ae.start_display) + '</td></tr>';
     }
     trackedHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">📌 Standing Reminders (Tracked & Applied)</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Standing Reminders (Tracked &amp; Applied)</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px;">' +
       tRows +
@@ -592,7 +592,7 @@ function renderDigestHtml(data) {
       cList += '<li style="margin-bottom:4px;">' + escapeHtml(changes.items[k]) + '</li>';
     }
     changesHtml = 
-      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">📊 Important Changes This Week</td></tr>' +
+      '<tr><td style="padding:22px 0 10px 0; font-size:16px; font-weight:700; color:' + cNavBg + ';">Important Changes This Week</td></tr>' +
       '<tr><td>' +
       '  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:' + cCardBg + '; border:1px solid ' + cBorder + '; border-radius:8px; padding:14px;">' +
       '    <tr><td>' +
@@ -622,7 +622,7 @@ function renderDigestHtml(data) {
     '          <tr>' +
     '            <td style="background-color:' + cNavBg + '; border-radius:10px 10px 0 0; padding:28px 24px; text-align:left;">' +
     '              <div style="font-size:11px; font-weight:700; color:' + cTeal + '; letter-spacing:1px; text-transform:uppercase;">' +
-    '                🛰️ BUILDATHON RADAR &middot; STUDENT EDITION' +
+    '                BUILDATHON RADAR &middot; STUDENT EDITION' +
     '              </div>' +
     '              <div style="font-size:24px; font-weight:800; color:#ffffff; margin-top:4px; letter-spacing:-0.5px;">' +
     '                Weekly Opportunity Digest' +
@@ -653,7 +653,7 @@ function renderDigestHtml(data) {
     '          <tr>' +
     '            <td style="background-color:' + cPageBg + '; border-left:1px solid ' + cBorder + '; border-right:1px solid ' + cBorder + '; padding:20px 24px;">' +
     '              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' +
-    '                <tr><td style="padding:4px 0 14px 0; font-size:18px; font-weight:800; color:' + cNavBg + ';">🔥 Featured Hackathons</td></tr>' +
+    '                <tr><td style="padding:4px 0 14px 0; font-size:18px; font-weight:800; color:' + cNavBg + ';">Featured Opportunities</td></tr>' +
     featuredCardsHtml +
     newlyDiscoveredHtml +
     deadlinesHtml +
@@ -669,7 +669,7 @@ function renderDigestHtml(data) {
     '            <td style="background-color:' + cNavBg + '; border-radius:0 0 10px 10px; padding:24px; text-align:center; color:#94a3b8; font-size:12px; line-height:1.5;">' +
     '              <div style="font-weight:700; color:#e2e8f0; margin-bottom:4px;">Buildathon Radar Mailing System</div>' +
     '              <div>Automated weekly intelligence for high school student builders in Bengaluru.</div>' +
-    '              <div style="margin-top:8px; color:#64748b;">Schedule: Sundays at 9:00 AM IST &middot; Timezone: Asia/Kolkata</div>' +
+    '              <div style="margin-top:8px; color:#64748b;">Schedule: Sundays at 8:00 AM IST &middot; Timezone: Asia/Kolkata</div>' +
     '              <div style="margin-top:12px; font-size:11px; color:#475569;">' +
     '                You received this because you are configured as the digest recipient.' +
     '              </div>' +
@@ -693,14 +693,14 @@ function renderDigestPlainText(data) {
   var blackout = data.blackout_calendar || {};
 
   var lines = [];
-  lines.push('🛰️ BUILDATHON RADAR - WEEKLY DIGEST');
-  lines.push('Edition: Student Edition (Class 11/12 · Bengaluru)');
+  lines.push('BUILDATHON RADAR - WEEKLY DIGEST');
+  lines.push('Edition: Student Edition (Class 11/12 - Bengaluru)');
   lines.push('Date: ' + (meta.date_display || '') + ' (' + (meta.date_range || '') + ')');
   lines.push('------------------------------------------------------------');
   lines.push(meta.intro || '');
   lines.push('');
   lines.push('============================================================');
-  lines.push('🔥 FEATURED HACKATHONS');
+  lines.push('FEATURED OPPORTUNITIES');
   lines.push('============================================================');
 
   if (featured.length === 0) {
@@ -721,7 +721,7 @@ function renderDigestPlainText(data) {
 
   if (deadlines.length > 0) {
     lines.push('============================================================');
-    lines.push('⏰ UPCOMING REGISTRATION DEADLINES');
+    lines.push('UPCOMING REGISTRATION DEADLINES');
     lines.push('============================================================');
     for (var d = 0; d < deadlines.length; d++) {
       var dl = deadlines[d];
@@ -733,7 +733,7 @@ function renderDigestPlainText(data) {
 
   if (blackout.upcoming_periods && blackout.upcoming_periods.length > 0) {
     lines.push('============================================================');
-    lines.push('🛡️ ACTIVE EXAM & TEST BLACKOUT DATES');
+    lines.push('ACTIVE EXAM & TEST BLACKOUT DATES');
     lines.push('============================================================');
     for (var b = 0; b < blackout.upcoming_periods.length; b++) {
       var bp = blackout.upcoming_periods[b];
