@@ -888,6 +888,22 @@ function testWithSampleData() {
 }
 
 /**
+ * Direct In-Editor Test Function:
+ * Sends an immediate test email to verify GmailApp permissions and inbox delivery.
+ */
+function sendDirectTestToInbox() {
+  var props = PropertiesService.getScriptProperties();
+  var email = props.getProperty('RECIPIENT_EMAIL') || 'aashrithganesh.yammanoori@gmail.com';
+  console.log('Sending direct test email to ' + email + '...');
+  GmailApp.sendEmail(
+    email,
+    'Buildathon Radar | Direct Permission Test',
+    'If you are reading this email, your Google Apps Script has full permission to send emails to your inbox via GmailApp!'
+  );
+  console.log('Test email successfully dispatched to ' + email);
+}
+
+/**
  * Simulates a doPost request using sample data to test webhook processing end-to-end.
  * DOES NOT send email unless forceSend is explicitly provided.
  */
