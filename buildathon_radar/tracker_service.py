@@ -27,7 +27,7 @@ from buildathon_radar.discovery.adapters import ADAPTER_REGISTRY, LIVE_SOURCE_KE
 from buildathon_radar.discovery.integrity import lifecycle
 
 load_dotenv()
-app = FastAPI(title="Buildathon Radar Tracker & Blackout Manager", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Buildathon Radar Tracker & Blackout Manager", version="0.2.0-beta", docs_url=None, redoc_url=None, openapi_url=None)
 app.middleware("http")(protect_local_request)
 DB_PATH = "tracker.db"
 _ASSETS = Path(__file__).resolve().parent / "assets"

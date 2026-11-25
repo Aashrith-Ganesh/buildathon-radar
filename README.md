@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#installation-instructions)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](#technology-stack)
 [![Database](https://img.shields.io/badge/database-SQLite%20(WAL)-orange.svg)](#database--migrations)
-[![Release](https://img.shields.io/badge/release-v0.1.0--alpha-purple.svg)](#version)
+[![Release](https://img.shields.io/badge/release-v0.2--Beta-purple.svg)](#version)
 
 ---
 
@@ -189,6 +189,7 @@ buildathon-radar/
 │   ├── CLI-AND-DATABASE-REFERENCE.md       # CLI reference and SQLite schema specifications
 │   ├── FEATURE-EXPANSION-REPORT.md         # Full feature expansion report
 │   ├── PIPELINE-ARCHITECTURE-PATTERN.md    # Pipeline architecture reference pattern
+│   ├── RELEASE-NOTES-v0.2-Beta.md          # v0.2-Beta release notes
 │   ├── RELEASE-NOTES-v0.1.0-alpha.md       # v0.1.0-alpha release notes
 │   ├── RELEASE-READINESS-REPORT.md         # Final release sign-off & readiness audit
 │   └── screenshots/                        # Standardized release screenshot gallery
@@ -196,7 +197,7 @@ buildathon-radar/
 │   └── launchd/                     # Native macOS LaunchAgent plist definitions
 ├── scripts/                         # Operational helper scripts
 │   └── manage_launchd.sh            # Launchd installation, validation, and control script
-└── tests/                           # Complete test suite (444 unit & integration tests)
+└── tests/                           # Complete test suite (461 unit & integration tests)
 ```
 
 ---
@@ -514,6 +515,14 @@ Buildathon Radar follows a strict local-first security architecture:
 
 ## 17. Roadmap
 
+### Completed in `v0.2-Beta`
+- [x] Serverless automated weekly email digest (GitHub Actions + Google Apps Script Web App).
+- [x] Cross-runner state persistence on dedicated orphan Git branch (`radar-state`).
+- [x] Universal emoji sanitization (`stripEmojis`) and clean typography across all email templates and digest data.
+- [x] Dual-theme screenshots (dark and light mode) across all application views.
+- [x] Complete repository-wide AI configuration cleanup and neutralisation.
+- [x] Consolidated master audit and remediation report (`docs/AUDIT-AND-REMEDIATION-REPORT.md`).
+
 ### Completed in `v0.1.0-alpha`
 - [x] Comprehensive independent audit remediation (elimination of fake discovery, fixed lifecycle filters).
 - [x] Transparent rule-based 0–100 scoring engine without LLM API dependencies.
@@ -522,7 +531,7 @@ Buildathon Radar follows a strict local-first security architecture:
 - [x] Personal student tracker unlocked for seamless local loopback usage.
 - [x] Student profile updated to **The Amaatra Academy** (Bengaluru).
 - [x] Addition of HackFusion 4.0 and curated national opportunities to the SQLite database.
-- [x] Full test suite (444 tests passing in ~1s).
+- [x] Full test suite (461 tests passing in ~1s).
 
 ### Planned for Future Milestones
 - [ ] Export personal calendar to standard `.ics` / iCal / Google Calendar format.
@@ -550,7 +559,7 @@ This project is open-source software licensed under the **MIT License**. See the
 
 ## 20. Version
 
-- **Version:** `v0.1.0-alpha`
-- **Release Name:** Student Opportunity Intelligence & Blackout Protection
+- **Version:** `v0.2-Beta`
+- **Release Name:** Serverless Push Automation & Clean Opportunity Intelligence
 - **Release Date:** November 2026
-- **Status:** Clean Local Production Release (Git Annotated Tag `v0.1.0-alpha`)
+- **Status:** Production Release (Git Annotated Tag `v0.2-Beta`)

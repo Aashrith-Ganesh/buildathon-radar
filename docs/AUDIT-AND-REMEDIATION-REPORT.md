@@ -1,7 +1,7 @@
 # Master Application Audit & Remediation Report
 
 **Project:** Buildathon Radar — Student Opportunity Intelligence Platform  
-**Target Release:** `v0.1.0-alpha`  
+**Target Release:** `v0.2-Beta` (consolidated from `v0.1.0-alpha`)  
 **Classification:** Engineering Audit, Security Assessment, UX Evaluation & Remediation Record  
 **Status:** 100% Remediated & Verified  
 
